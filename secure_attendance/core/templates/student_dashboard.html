@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Student Dashboard</title>
+</head>
+<body>
+    <h2>Student Dashboard</h2>
+
+    <a href="/student/register-device/">Register Device</a>
+
+    <h3>Active Sessions</h3>
+
+    {% for session in sessions %}
+        <div style="border:1px solid black; padding:10px; margin:10px;">
+            <p><strong>Course:</strong> {{ session.course_code }}</p>
+            <p><strong>Expires:</strong> {{ session.expiry }}</p>
+
+            <!-- <button onclick="startBiometric('{{ session.id }}', '{{ session.network_nonce }}')">
+                Submit Attendance
+            </button> -->
+            <button onclick="signNonce('{{ session.id }}', '{{ session.network_nonce }}')">
+                Submit Attendance
+            </button>
+
+        </div>
+    {% empty %}
+        <p>No active sessions.</p>
+    {% endfor %}
+
+    <br>
+    <p id="attendanceStatus"></p>
+
+    <a href="{% url 'logout' %}">Logout</a>
+
+<script>
+async function startBiometric(sessionId, nonce) {
+
+    /*
+    ==========================================================
+    🔴 🔴 🔴  THIS IS WHERE YOUR FACE SYSTEM GOES  🔴 🔴 🔴
+    ==========================================================
+
+    1. Open camera
+    2. Run face detection
+    3. Generate embedding
+    4. Compare with stored embedding (or call backend)
+    5. If match -> proceed
+    6. If fail -> STOP
+
+    For now, we simulate success.
+    */
+
+    let biometricPassed = true;  // Replace with real verification
+
+    if (!biometricPassed) {
+        alert("Face verification failed.");
+        return;
+    }
+
+    signNonce(sessionId, nonce);
+}
+
+/*async function signNonce(sessionId, nonce) {
+
+    const encoder = new TextEncoder();
+    const data = encoder.encode(nonce);
+
+    const signature = await crypto.subtle.sign(
+        {
+            name: "ECDSA",
+            hash: { name: "SHA-256" }
+        },
+        privateKey,
+        data
+    );
+    
+
+    const base64Signature =
+        btoa(String.fromCharCode(...new Uint8Array(signature)));
+
+    fetch("/student/submit/", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-CSRFToken": "{{ csrf_token }}"
+        },
+        body: `session_id=${sessionId}&signed_nonce=${base64Signature}`
+    }).then(() => location.reload());
+}*/
+
+// async function signNonce(sessionId, nonce) {
+
+//     alert("Signing started");
+
+//     const privateBase64 = localStorage.getItem("device_private_key");
+
+//     if (!privateBase64) {
+//         alert("Private key not found.");
+//         return;
+//     }
+
+//     try {
+//         const binary = Uint8Array.from(atob(privateBase64), c => c.charCodeAt(0));
+
+//         const privateKey = await crypto.subtle.importKey(
+//             "pkcs8",
+//             binary.buffer,
+//             {
+//                 name: "ECDSA",
+//                 namedCurve: "P-256"
+//             },
+//             false,
+//             ["sign"]
+//         );
+
+//         alert("Private key imported");
+
+//         const encoder = new TextEncoder();
+//         const data = encoder.encode(nonce);
+
+//         const signature = await crypto.subtle.sign(
+//             {
+//                 name: "ECDSA",
+//                 hash: { name: "SHA-256" }
+//             },
+//             privateKey,
+//             data
+//         );
+
+//         alert("Nonce signed");
+
+//         let binarySig = "";
+//         const sigBytes = new Uint8Array(signature);
+//         for (let i = 0; i < sigBytes.byteLength; i++) {
+//             binarySig += String.fromCharCode(sigBytes[i]);
+//         }
+
+//         const base64Signature = btoa(binarySig);
+
+//         alert("Sending to backend");
+
+//     const response = await fetch("/student/submit/", {
+//         method: "POST",
+//         headers: {
+//             "Content-Type": "application/json",
+//             "X-CSRFToken": "{{ csrf_token }}"
+//         },
+//         body: JSON.stringify({
+//             session_id: sessionId,
+//             signed_nonce: base64Signature
+//         })
+//     });
+
+//     const result = await response.json();
+
+//     document.getElementById("attendanceStatus").innerText = result.message;
+//     document.getElementById("attendanceStatus").style.color =
+//     result.status === "success" ? "green" : "red";
+
+//     } catch (err) {
+//         alert("Signing error: " + err);
+//     }
+// }
+
+function getCSRFToken() {
+    const cookie = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('csrftoken='));
+
+    return cookie ? cookie.split('=')[1] : '';
+}
+
+async function signNonce(sessionId, nonce) {
+
+    try {
+
+        const privateBase64 = localStorage.getItem("device_private_key");
+
+        if (!privateBase64) {
+            alert("Device not registered.");
+            return;
+        }
+
+        const binary = atob(privateBase64);
+        const bytes = new Uint8Array(binary.length);
+
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+
+        const privateKey = await crypto.subtle.importKey(
+            "pkcs8",
+            bytes.buffer,
+            {
+                name: "ECDSA",
+                namedCurve: "P-256"
+            },
+            false,
+            ["sign"]
+        );
+
+        const encoder = new TextEncoder();
+        const data = encoder.encode(nonce);
+
+        const signature = await crypto.subtle.sign(
+            {
+                name: "ECDSA",
+                hash: { name: "SHA-256" }
+            },
+            privateKey,
+            data
+        );
+
+        const signatureBytes = new Uint8Array(signature);
+        let binarySig = "";
+
+        signatureBytes.forEach(b => binarySig += String.fromCharCode(b));
+
+        const base64Signature = btoa(binarySig);
+
+        const response = await fetch("/student/submit/", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCSRFToken()
+            },
+            body: JSON.stringify({
+                session_id: sessionId,
+                signed_nonce: base64Signature
+            })
+        });
+
+        const text = await response.text();
+
+        document.getElementById("attendanceStatus").innerText = text;
+
+    }
+    catch(err){
+        alert("Signing error: " + err);
+    }
+
+}
+
+
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Attendance Result</title>
+</head>
+<body>
+    <h2>Attendance Status</h2>
+
+    {% if success %}
+        <p style="color:green;">{{ message }}</p>
+    {% else %}
+        <p style="color:red;">{{ message }}</p>
+    {% endif %}
+
+    <a href="{% url 'student_dashboard' %}">Back</a>
+</body>
+</html>

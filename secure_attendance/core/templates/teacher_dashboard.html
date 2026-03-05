@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teacher Dashboard</title>
+</head>
+<body>
+    <h2>Teacher Dashboard</h2>
+
+    <a href="{% url 'start_session' %}">Start New Session</a>
+    <br><br>
+
+    <h3>Your Sessions</h3>
+
+    {% for session in sessions %}
+        <div style="border:1px solid black; padding:10px; margin:10px;">
+            <p><strong>Course:</strong> {{ session.course_code }}</p>
+            <p><strong>Started:</strong> {{ session.timestamp }}</p>
+            <p><strong>Active:</strong> {{ session.active }}</p>
+
+            <a href="{% url 'verify_integrity' session.id %}">
+                Verify Integrity
+            </a>
+        </div>
+        <a href="{% url 'export_csv' session.id %}">Export CSV</a>
+        <a href="{% url 'export_xlsx' session.id %}">Export xlsx</a>
+    {% empty %}
+        <p>No sessions yet.</p>
+    {% endfor %}
+
+    <h3>Marked Students</h3>
+
+<table border="1">
+    <tr>
+        <th>Student</th>
+        <th>Time</th>
+        <th>IP</th>
+    </tr>
+    {% for record in attendance_records %}
+    <tr>
+        <td>{{ record.student.email }}</td>
+        <td>{{ record.timestamp }}</td>
+        <td>{{ record.client_ip }}</td>
+    </tr>
+    {% empty %}
+    <tr>
+        <td colspan="3">No attendance yet.</td>
+    </tr>
+    {% endfor %}
+</table>
+
+
+    <br>
+    <a href="{% url 'logout' %}">Logout</a>
+</body>
+</html>

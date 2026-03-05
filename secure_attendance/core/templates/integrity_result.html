@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Integrity Result</title>
+</head>
+<body>
+    <h2>Integrity Check</h2>
+
+    {% if result %}
+        <p style="color:green;">Records are valid.</p>
+    {% else %}
+        <p style="color:red;">Tampering detected!</p>
+    {% endif %}
+
+    <a href="{% url 'teacher_dashboard' %}">Back</a>
+</body>
+</html>

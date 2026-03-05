@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Start Attendance Session</title>
+</head>
+<body>
+    <h2>Start Attendance Session</h2>
+
+    <form method="POST">
+        {% csrf_token %}0.
+        <label>Course Code:</label><br>
+        <input name="course_code" required><br><br>
+
+        <button type="submit">Start Session</button>
+    </form>
+
+    <br>
+    <a href="{% url 'teacher_dashboard' %}">Back</a>
+</body>
+</html>

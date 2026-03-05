@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Register Device</title>
+</head>
+
+<body>
+
+<h2>Register This Device</h2>
+
+<button onclick="generateKeys()">Generate Device Keys</button>
+<button onclick="sendPublicKey()">Register Device</button>
+
+<p id="status"></p>
+
+<script>
+
+let keyPair = null;
+
+
+/* -------- CSRF TOKEN HELPER -------- */
+
+function getCSRFToken() {
+    const cookie = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('csrftoken='));
+
+    return cookie ? cookie.split('=')[1] : '';
+}
+
+
+/* -------- KEY GENERATION -------- */
+
+async function generateKeys() {
+    if (localStorage.getItem("device_private_key")) {
+        alert("Action blocked: Key already exists in storage.");
+        return;
+    }
+
+    try {
+
+        keyPair = await window.crypto.subtle.generateKey(
+            {
+                name: "ECDSA",
+                namedCurve: "P-256"
+            },
+            true,
+            ["sign", "verify"]
+        );
+
+        const privateKeyBuffer = await crypto.subtle.exportKey(
+            "pkcs8",
+            keyPair.privateKey
+        );
+
+        let binary = "";
+        const bytes = new Uint8Array(privateKeyBuffer);
+
+        for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+
+        const privateBase64 = btoa(binary);
+
+        localStorage.setItem("device_private_key", privateBase64);
+
+        document.getElementById("status").innerText = "Keys generated successfully.";
+
+    }
+    catch(err){
+        document.getElementById("status").innerText = "Key generation failed: " + err;
+    }
+
+}
+
+
+/* -------- SEND PUBLIC KEY TO SERVER -------- */
+
+async function sendPublicKey() {
+
+    try {
+
+        if (!keyPair) {
+            alert("Generate keys first!");
+            return;
+        }
+
+        const exported = await window.crypto.subtle.exportKey(
+            "spki",
+            keyPair.publicKey
+        );
+
+        let binary = "";
+        const bytes = new Uint8Array(exported);
+
+        for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+
+        const base64 = btoa(binary);
+
+        const pem =
+`-----BEGIN PUBLIC KEY-----
+${base64}
+-----END PUBLIC KEY-----`;
+
+
+        const response = await fetch("/student/register-device/", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCSRFToken()
+            },
+            body: JSON.stringify({
+                public_key: pem
+            })
+        });
+
+
+        const text = await response.text();
+
+        document.getElementById("status").innerText = "Device registered successfully.";
+
+    }
+    catch(err){
+        document.getElementById("status").innerText = "Registration failed: " + err;
+    }
+
+}
+
+</script>
+
+</body>
+</html>
