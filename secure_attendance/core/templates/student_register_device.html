@@ -1,133 +1,192 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Register Device</title>
-</head>
-
-<body>
-
-<h2>Register This Device</h2>
-
-<button onclick="generateKeys()">Generate Device Keys</button>
-<button onclick="sendPublicKey()">Register Device</button>
-
-<p id="status"></p>
-
-<script>
-
-let keyPair = null;
-
-
-/* -------- CSRF TOKEN HELPER -------- */
-
-function getCSRFToken() {
-    const cookie = document.cookie
-        .split('; ')
-        .find(row => row.startsWith('csrftoken='));
-
-    return cookie ? cookie.split('=')[1] : '';
-}
-
-
-/* -------- KEY GENERATION -------- */
-
-async function generateKeys() {
-    if (localStorage.getItem("device_private_key")) {
-        alert("Action blocked: Key already exists in storage.");
-        return;
-    }
-
-    try {
-
-        keyPair = await window.crypto.subtle.generateKey(
-            {
-                name: "ECDSA",
-                namedCurve: "P-256"
-            },
-            true,
-            ["sign", "verify"]
-        );
-
-        const privateKeyBuffer = await crypto.subtle.exportKey(
-            "pkcs8",
-            keyPair.privateKey
-        );
-
-        let binary = "";
-        const bytes = new Uint8Array(privateKeyBuffer);
-
-        for (let i = 0; i < bytes.byteLength; i++) {
-            binary += String.fromCharCode(bytes[i]);
+    <style>
+        :root {
+            --bg-start: #dde8f5;
+            --bg-end: #f3f6fb;
+            --card-bg: #ffffff;
+            --card-border: #dbe3ed;
+            --text-main: #0f172a;
+            --text-muted: #475569;
+            --button-bg: #0b5f78;
+            --button-hover: #084f63;
+            --button-secondary-bg: #0e7a64;
+            --button-secondary-hover: #0b6854;
+            --status: #0e7a64;
+            --shadow: 0 20px 34px -22px rgba(15, 23, 42, 0.5);
         }
 
-        const privateBase64 = btoa(binary);
+        * {
+            box-sizing: border-box;
+        }
 
-        localStorage.setItem("device_private_key", privateBase64);
+        body {
+            font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: radial-gradient(circle at 12% 8%, #c7d9ef 0%, transparent 27%),
+                        linear-gradient(155deg, var(--bg-start), var(--bg-end));
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1.25rem;
+            color: var(--text-main);
+        }
 
-        document.getElementById("status").innerText = "Keys generated successfully.";
+        .device-container {
+            background-color: var(--card-bg);
+            padding: 2rem;
+            border-radius: 14px;
+            box-shadow: var(--shadow);
+            width: 100%;
+            max-width: 430px;
+            text-align: center;
+            border: 1px solid var(--card-border);
+            border-top: 6px solid var(--button-bg);
+        }
 
+        h2 {
+            margin-top: 0;
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+
+        .subheading {
+            margin: 0 0 1.5rem;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            background: #f8fbff;
+            border: 1px solid #dbe8f5;
+            border-radius: 10px;
+            padding: 0.55rem 0.7rem;
+        }
+
+        button {
+            background-color: var(--button-bg);
+            color: white;
+            padding: 0.82rem;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s ease, transform 0.08s ease;
+            margin-bottom: 0.8rem;
+            width: 100%;
+        }
+
+        button:hover {
+            background-color: var(--button-hover);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        button + button {
+            background-color: var(--button-secondary-bg);
+        }
+
+        button + button:hover {
+            background-color: var(--button-secondary-hover);
+        }
+
+        #status {
+            margin-top: 0.9rem;
+            margin-bottom: 0;
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--status);
+            min-height: 1.2em;
+        }
+
+        @media (max-width: 480px) {
+            .device-container {
+                padding: 1.35rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="device-container">
+        <h2>Register This Device</h2>
+        <p class="subheading">Generate a key pair and register your public key</p>
+
+        <button onclick="generateKeys()">Generate Device Keys</button>
+        <button onclick="sendPublicKey()">Register Device</button>
+
+        <p id="status"></p>
+    </div>
+
+<script>
+let keyPair = null;
+
+async function generateKeys() {
+    keyPair = await window.crypto.subtle.generateKey(
+        {
+            name: "ECDSA",
+            namedCurve: "P-256"
+        },
+        true,
+        ["sign", "verify"]
+    );
+
+    // Export private key
+    const privateKeyBuffer = await crypto.subtle.exportKey(
+        "pkcs8",
+        keyPair.privateKey
+    );
+
+    let binary = "";
+    const bytes = new Uint8Array(privateKeyBuffer);
+    for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
     }
-    catch(err){
-        document.getElementById("status").innerText = "Key generation failed: " + err;
-    }
 
+    const privateBase64 = btoa(binary);
+    localStorage.setItem("device_private_key", privateBase64);
+
+    document.getElementById("status").innerText = "Keys generated.";
 }
-
-
-/* -------- SEND PUBLIC KEY TO SERVER -------- */
 
 async function sendPublicKey() {
 
-    try {
-
-        if (!keyPair) {
-            alert("Generate keys first!");
-            return;
-        }
-
-        const exported = await window.crypto.subtle.exportKey(
-            "spki",
-            keyPair.publicKey
-        );
-
-        let binary = "";
-        const bytes = new Uint8Array(exported);
-
-        for (let i = 0; i < bytes.byteLength; i++) {
-            binary += String.fromCharCode(bytes[i]);
-        }
-
-        const base64 = btoa(binary);
-
-        const pem =
-`-----BEGIN PUBLIC KEY-----
-${base64}
------END PUBLIC KEY-----`;
-
-
-        const response = await fetch("/student/register-device/", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-CSRFToken": getCSRFToken()
-            },
-            body: JSON.stringify({
-                public_key: pem
-            })
-        });
-
-
-        const text = await response.text();
-
-        document.getElementById("status").innerText = "Device registered successfully.";
-
-    }
-    catch(err){
-        document.getElementById("status").innerText = "Registration failed: " + err;
+    if (!keyPair) {
+        alert("Generate keys first!");
+        return;
     }
 
+    const exported = await window.crypto.subtle.exportKey(
+        "spki",
+        keyPair.publicKey
+    );
+
+    let binary = "";
+    const bytes = new Uint8Array(exported);
+    for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+
+    const base64 = btoa(binary);
+
+    const pem = `-----BEGIN PUBLIC KEY-----\n${base64}\n-----END PUBLIC KEY-----`;
+
+    fetch("/student/register-device/", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": "{{ csrf_token }}"
+        },
+        body: JSON.stringify({ public_key: pem })
+    }).then(() => {
+        document.getElementById("status").innerText = "Device registered.";
+    });
 }
-
 </script>
 
 </body>

@@ -1,55 +1,280 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Teacher Dashboard</title>
+    <style>
+        :root {
+            --bg-start: #dde8f5;
+            --bg-end: #f3f6fb;
+            --panel-bg: #ffffff;
+            --panel-border: #dbe3ed;
+            --text-main: #0f172a;
+            --text-muted: #475569;
+            --heading-line: #e2e8f0;
+            --session-bg: #f8fafc;
+            --session-border: #e2e8f0;
+            --primary: #0b5f78;
+            --primary-hover: #084f63;
+            --neutral-btn: #eaf1f8;
+            --neutral-btn-text: #1f3347;
+            --neutral-btn-hover: #d7e5f2;
+            --danger: #dc2626;
+            --danger-hover: #b91c1c;
+            --shadow: 0 20px 36px -24px rgba(15, 23, 42, 0.5);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: radial-gradient(circle at 8% 8%, #c7d9ef 0%, transparent 26%),
+                        linear-gradient(160deg, var(--bg-start), var(--bg-end));
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            margin: 0;
+            padding: 2rem 1rem;
+            color: var(--text-main);
+        }
+
+        .dashboard-container {
+            background-color: var(--panel-bg);
+            padding: 2rem;
+            border-radius: 14px;
+            box-shadow: var(--shadow);
+            width: 100%;
+            max-width: 860px;
+            border: 1px solid var(--panel-border);
+            border-top: 6px solid var(--primary);
+        }
+
+        h2 {
+            margin-top: 0;
+            margin-bottom: 1.3rem;
+            font-weight: 700;
+            border-bottom: 1px solid var(--heading-line);
+            padding-bottom: 0.8rem;
+        }
+
+        h3 {
+            margin-top: 1.75rem;
+            margin-bottom: 0.9rem;
+            color: #1e293b;
+            font-size: 1.08rem;
+            letter-spacing: 0.15px;
+            background: #f8fbff;
+            border: 1px solid #dbe8f5;
+            border-radius: 10px;
+            padding: 0.55rem 0.75rem;
+        }
+
+        a[href="{% url 'start_session' %}"] {
+            display: inline-block;
+            background-color: var(--primary);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: background-color 0.2s ease, transform 0.08s ease;
+            margin-bottom: 0.65rem;
+        }
+
+        a[href="{% url 'start_session' %}"]:hover {
+            background-color: var(--primary-hover);
+        }
+
+        a[href="{% url 'start_session' %}"]:active {
+            transform: translateY(1px);
+        }
+
+        div[style*="border:1px solid black"] {
+            border: 1px solid var(--session-border) !important;
+            padding: 1rem 1.1rem !important;
+            margin: 0 0 0.55rem 0 !important;
+            border-radius: 12px !important;
+            background-color: var(--session-bg) !important;
+            border-left: 5px solid #8fb6d8 !important;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+
+        div[style*="border:1px solid black"] p {
+            margin: 0;
+            font-size: 0.95rem;
+            color: var(--text-muted);
+        }
+
+        div[style*="border:1px solid black"] strong {
+            color: #1e293b;
+        }
+
+        a[href*="verify_integrity"] {
+            color: #0f172a;
+            font-weight: 600;
+            text-decoration: none;
+            margin-top: 0.3rem;
+            display: inline-block;
+        }
+
+        a[href*="verify_integrity"]:hover {
+            text-decoration: underline;
+        }
+
+        a[href*="export_csv"],
+        a[href*="export_xlsx"] {
+            display: inline-block;
+            color: var(--neutral-btn-text);
+            font-size: 0.85rem;
+            text-decoration: none;
+            border: 1px solid #cbd5e1;
+            padding: 0.38rem 0.82rem;
+            border-radius: 8px;
+            margin: 0 0.4rem 1.2rem 0;
+            background-color: var(--neutral-btn);
+            font-weight: 600;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+        }
+
+        a[href*="export_csv"]:hover,
+        a[href*="export_xlsx"]:hover {
+            background-color: var(--neutral-btn-hover);
+            border-color: #94a3b8;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 0.35rem;
+            font-size: 0.95rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            overflow: hidden;
+            display: table;
+            background-color: #ffffff;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 0.72rem 0.92rem;
+            border: none !important;
+        }
+
+        th {
+            background-color: #f8fafc;
+            color: #334155;
+            font-weight: 600;
+            border-bottom: 1px solid #e2e8f0 !important;
+        }
+
+        td {
+            color: var(--text-muted);
+            border-bottom: 1px solid #eef2f7 !important;
+        }
+
+        tr:last-child td {
+            border-bottom: none !important;
+        }
+
+        tr:hover td {
+            background-color: #f8fafc;
+        }
+
+        tr:nth-child(even) td {
+            background-color: #fbfdff;
+        }
+
+        a[href="{% url 'logout' %}"] {
+            display: block;
+            margin-top: 1.6rem;
+            color: var(--danger);
+            text-decoration: none;
+            font-weight: 600;
+            text-align: right;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 0.9rem;
+        }
+
+        a[href="{% url 'logout' %}"]:hover {
+            color: var(--danger-hover);
+            text-decoration: underline;
+        }
+
+        p {
+            color: var(--text-muted);
+        }
+
+        br {
+            display: none;
+        }
+
+        @media (max-width: 640px) {
+            .dashboard-container {
+                padding: 1.3rem;
+            }
+
+            table, thead, tbody, th, td, tr {
+                font-size: 0.9rem;
+            }
+        }
+    </style>
 </head>
 <body>
-    <h2>Teacher Dashboard</h2>
+    <div class="dashboard-container">
+        <h2>Teacher Dashboard</h2>
 
-    <a href="{% url 'start_session' %}">Start New Session</a>
-    <br><br>
+        <a href="{% url 'start_session' %}">Start New Session</a>
+        <br><br>
 
-    <h3>Your Sessions</h3>
+        <h3>Your Sessions</h3>
 
-    {% for session in sessions %}
-        <div style="border:1px solid black; padding:10px; margin:10px;">
-            <p><strong>Course:</strong> {{ session.course_code }}</p>
-            <p><strong>Started:</strong> {{ session.timestamp }}</p>
-            <p><strong>Active:</strong> {{ session.active }}</p>
+        {% for session in sessions %}
+            <div style="border:1px solid black; padding:10px; margin:10px;">
+                <p><strong>Course:</strong> {{ session.course_code }}</p>
+                <p><strong>Started:</strong> {{ session.timestamp }}</p>
+                <p><strong>Active:</strong> {{ session.active }}</p>
 
-            <a href="{% url 'verify_integrity' session.id %}">
-                Verify Integrity
-            </a>
-        </div>
-        <a href="{% url 'export_csv' session.id %}">Export CSV</a>
-        <a href="{% url 'export_xlsx' session.id %}">Export xlsx</a>
-    {% empty %}
-        <p>No sessions yet.</p>
-    {% endfor %}
+                <a href="{% url 'verify_integrity' session.id %}">
+                    Verify Integrity
+                </a>
+            </div>
+            <a href="{% url 'export_csv' session.id %}">Export CSV</a>
+            <a href="{% url 'export_xlsx' session.id %}">Export xlsx</a>
+        {% empty %}
+            <p>No sessions yet.</p>
+        {% endfor %}
 
-    <h3>Marked Students</h3>
+        <h3>Marked Students</h3>
 
-<table border="1">
-    <tr>
-        <th>Student</th>
-        <th>Time</th>
-        <th>IP</th>
-    </tr>
-    {% for record in attendance_records %}
-    <tr>
-        <td>{{ record.student.email }}</td>
-        <td>{{ record.timestamp }}</td>
-        <td>{{ record.client_ip }}</td>
-    </tr>
-    {% empty %}
-    <tr>
-        <td colspan="3">No attendance yet.</td>
-    </tr>
-    {% endfor %}
-</table>
+    <table border="1">
+        <tr>
+            <th>Student</th>
+            <th>Time</th>
+            <th>IP</th>
+        </tr>
+        {% for record in attendance_records %}
+        <tr>
+            <td>{{ record.student.email }}</td>
+            <td>{{ record.timestamp }}</td>
+            <td>{{ record.client_ip }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="3">No attendance yet.</td>
+        </tr>
+        {% endfor %}
+    </table>
 
 
-    <br>
-    <a href="{% url 'logout' %}">Logout</a>
+        <br>
+        <a href="{% url 'logout' %}">Logout</a>
+    </div>
 </body>
 </html>

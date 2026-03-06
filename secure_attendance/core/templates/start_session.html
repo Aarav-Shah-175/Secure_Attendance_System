@@ -1,20 +1,167 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Start Attendance Session</title>
+    <style>
+        :root {
+            --bg-start: #dde8f5;
+            --bg-end: #f3f6fb;
+            --card-bg: #ffffff;
+            --card-border: #dbe3ed;
+            --text-main: #1f2937;
+            --text-muted: #4b5563;
+            --field-border: #cbd5e1;
+            --field-focus: #0b5f78;
+            --primary: #0b5f78;
+            --primary-hover: #084f63;
+            --link: #334155;
+            --shadow: 0 20px 34px -22px rgba(15, 23, 42, 0.5);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: radial-gradient(circle at 12% 8%, #c7d9ef 0%, transparent 27%),
+                        linear-gradient(155deg, var(--bg-start), var(--bg-end));
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            color: var(--text-main);
+            padding: 1.25rem;
+        }
+
+        .session-container {
+            background-color: var(--card-bg);
+            padding: 2rem;
+            border-radius: 14px;
+            box-shadow: var(--shadow);
+            width: 100%;
+            max-width: 440px;
+            border: 1px solid var(--card-border);
+            border-top: 6px solid var(--primary);
+        }
+
+        h2 {
+            margin-top: 0;
+            margin-bottom: 0.5rem;
+            text-align: center;
+            font-weight: 700;
+        }
+
+        .subheading {
+            text-align: center;
+            margin: 0 0 1.5rem;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            background-color: #f8fbff;
+            border: 1px solid #dbe8f5;
+            border-radius: 10px;
+            padding: 0.55rem 0.7rem;
+        }
+
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+
+        label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #334155;
+        }
+
+        input[name="course_code"] {
+            width: 100%;
+            padding: 0.78rem 0.85rem;
+            border: 1px solid var(--field-border);
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
+            background-color: #f8fafc;
+        }
+
+        input[name="course_code"]:focus {
+            outline: none;
+            border-color: var(--field-focus);
+            box-shadow: 0 0 0 3px rgba(11, 95, 120, 0.15);
+            background-color: #ffffff;
+        }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            padding: 0.8rem;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s ease, transform 0.08s ease;
+            margin: 0.25rem 0 1.25rem;
+            letter-spacing: 0.2px;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        a[href="{% url 'teacher_dashboard' %}"] {
+            display: block;
+            text-align: center;
+            color: var(--link);
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: color 0.2s ease;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 0.95rem;
+        }
+
+        a[href="{% url 'teacher_dashboard' %}"]:hover {
+            color: #0f172a;
+            text-decoration: underline;
+        }
+
+        br {
+            display: none;
+        }
+
+        @media (max-width: 480px) {
+            .session-container {
+                padding: 1.35rem;
+            }
+        }
+    </style>
 </head>
 <body>
-    <h2>Start Attendance Session</h2>
+    <div class="session-container">
+        <h2>Start Attendance Session</h2>
+        <p class="subheading">Create a live session for the selected course</p>
 
-    <form method="POST">
-        {% csrf_token %}0.
-        <label>Course Code:</label><br>
-        <input name="course_code" required><br><br>
+        <form method="POST">
+            {% csrf_token %}
+            <label>Course Code:</label><br>
+            <input name="course_code" required><br><br>
 
-        <button type="submit">Start Session</button>
-    </form>
+            <button type="submit">Start Session</button>
+        </form>
 
-    <br>
-    <a href="{% url 'teacher_dashboard' %}">Back</a>
+        <br>
+        <a href="{% url 'teacher_dashboard' %}">Back</a>
+    </div>
 </body>
 </html>

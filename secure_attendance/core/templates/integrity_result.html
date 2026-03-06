@@ -1,17 +1,126 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Integrity Result</title>
+    <style>
+        :root {
+            --bg-start: #dde8f5;
+            --bg-end: #f3f6fb;
+            --card-bg: #ffffff;
+            --text-main: #1f2937;
+            --text-muted: #4b5563;
+            --ok-bg: #dcfce7;
+            --ok-text: #166534;
+            --ok-border: #86efac;
+            --danger-bg: #fee2e2;
+            --danger-text: #991b1b;
+            --danger-border: #fca5a5;
+            --button-bg: #0b5f78;
+            --button-hover: #084f63;
+            --shadow: 0 20px 34px -22px rgba(15, 23, 42, 0.5);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: radial-gradient(circle at 10% 10%, #c7d9ef 0%, transparent 28%),
+                        linear-gradient(155deg, var(--bg-start), var(--bg-end));
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1.25rem;
+            color: var(--text-main);
+        }
+
+        .integrity-container {
+            background-color: var(--card-bg);
+            padding: 2rem;
+            border-radius: 14px;
+            box-shadow: var(--shadow);
+            width: 100%;
+            max-width: 430px;
+            text-align: center;
+            border: 1px solid #dbe3ed;
+            border-top: 6px solid #0b5f78;
+        }
+
+        h2 {
+            margin-top: 0;
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            color: #0f172a;
+        }
+
+        .subheading {
+            margin: 0 0 1.5rem;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        p[style*="color:green;"] {
+            color: var(--ok-text) !important;
+            background-color: var(--ok-bg) !important;
+            border: 1px solid var(--ok-border) !important;
+            padding: 1rem 1.1rem;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 1.05rem;
+            margin: 0 0 1.4rem;
+        }
+
+        p[style*="color:red;"] {
+            color: var(--danger-text) !important;
+            background-color: var(--danger-bg) !important;
+            border: 1px solid var(--danger-border) !important;
+            padding: 1rem 1.1rem;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 1.05rem;
+            margin: 0 0 1.4rem;
+        }
+
+        a {
+            display: inline-block;
+            width: 100%;
+            background-color: var(--button-bg);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            text-decoration: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: background-color 0.2s ease, transform 0.08s ease;
+        }
+
+        a:hover {
+            background-color: var(--button-hover);
+        }
+
+        a:active {
+            transform: translateY(1px);
+        }
+    </style>
 </head>
 <body>
-    <h2>Integrity Check</h2>
+    <div class="integrity-container">
+        <h2>Integrity Check</h2>
+        <p class="subheading">Session record authenticity status</p>
 
-    {% if result %}
-        <p style="color:green;">Records are valid.</p>
-    {% else %}
-        <p style="color:red;">Tampering detected!</p>
-    {% endif %}
+        {% if result %}
+            <p style="color:green;">Records are valid.</p>
+        {% else %}
+            <p style="color:red;">Tampering detected!</p>
+        {% endif %}
 
-    <a href="{% url 'teacher_dashboard' %}">Back</a>
+        <a href="{% url 'teacher_dashboard' %}">Back</a>
+    </div>
 </body>
 </html>

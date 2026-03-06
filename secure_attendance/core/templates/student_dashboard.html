@@ -1,43 +1,205 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Student Dashboard</title>
+    <style>
+        :root {
+            --bg-start: #dde8f5;
+            --bg-end: #f3f6fb;
+            --card-bg: #ffffff;
+            --card-border: #dbe3ed;
+            --text-main: #0f172a;
+            --text-muted: #475569;
+            --line: #e2e8f0;
+            --session-bg: #f8fafc;
+            --session-border: #e2e8f0;
+            --action: #0b5f78;
+            --action-hover: #084f63;
+            --danger: #dc2626;
+            --danger-hover: #b91c1c;
+            --shadow: 0 20px 36px -24px rgba(15, 23, 42, 0.5);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: radial-gradient(circle at 8% 8%, #c7d9ef 0%, transparent 26%),
+                        linear-gradient(160deg, var(--bg-start), var(--bg-end));
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            margin: 0;
+            padding: 2rem 1rem;
+            color: var(--text-main);
+        }
+
+        .dashboard-container {
+            background-color: var(--card-bg);
+            padding: 2rem;
+            border-radius: 14px;
+            box-shadow: var(--shadow);
+            width: 100%;
+            max-width: 500px;
+            border: 1px solid var(--card-border);
+            border-top: 6px solid var(--action);
+        }
+
+        h2 {
+            margin-top: 0;
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+            border-bottom: 1px solid var(--line);
+            padding-bottom: 0.7rem;
+        }
+
+        .subheading {
+            margin: 0 0 1.2rem;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            background: #f8fbff;
+            border: 1px solid #dbe8f5;
+            border-radius: 10px;
+            padding: 0.55rem 0.7rem;
+        }
+
+        h3 {
+            margin-top: 1.45rem;
+            margin-bottom: 0.85rem;
+            color: #1e293b;
+            font-size: 1.05rem;
+        }
+
+        a {
+            display: inline-block;
+            color: var(--action);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.92rem;
+            transition: color 0.2s;
+        }
+
+        a:hover {
+            color: var(--action-hover);
+            text-decoration: underline;
+        }
+        
+        a[href="{% url 'logout' %}"] {
+            color: var(--danger);
+            margin-top: 1.35rem;
+            display: block;
+            text-align: center;
+            border-top: 1px solid var(--line);
+            padding-top: 0.95rem;
+        }
+
+        a[href="{% url 'logout' %}"]:hover {
+            color: var(--danger-hover);
+        }
+
+        div[style*="border:1px solid black"] {
+            border: 1px solid var(--session-border) !important;
+            padding: 1rem 1.1rem !important;
+            margin: 0 0 0.9rem 0 !important;
+            border-radius: 12px !important;
+            background-color: var(--session-bg) !important;
+            border-left: 5px solid #8fb6d8 !important;
+            transition: box-shadow 0.2s ease !important;
+            transform: 0.2s ease !important;
+        }
+
+        div[style*="border:1px solid black"]:hover {
+            box-shadow: 0 12px 20px -18px rgba(15, 23, 42, 0.7) !important;
+            transform: translateY(-1px) !important;
+        }
+
+        div[style*="border:1px solid black"] p {
+            margin: 0 0 0.45rem 0;
+            font-size: 0.95rem;
+            color: var(--text-muted);
+        }
+
+        button {
+            background-color: #0b5f78;
+            color: white;
+            padding: 0.75rem 1rem;
+            border: none;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s ease, transform 0.08s ease;
+            margin-top: 0.5rem;
+            width: 100%;
+        }
+
+        button:hover {
+            background-color: #084f63;
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        #attendanceStatus {
+            font-weight: 600;
+            text-align: center;
+            margin-top: 0.95rem;
+            margin-bottom: 0;
+            min-height: 1.5em;
+        }
+
+        br {
+            display: none; 
+        }
+
+        @media (max-width: 480px) {
+            .dashboard-container {
+                padding: 1.3rem;
+            }
+        }
+    </style>
 </head>
 <body>
-    <h2>Student Dashboard</h2>
+    <div class="dashboard-container">
+        <h2>Student Dashboard</h2>
+        <p class="subheading">View active classes and submit attendance securely</p>
 
-    <a href="/student/register-device/">Register Device</a>
+        <a href="/student/register-device/">Register Device</a>
 
-    <h3>Active Sessions</h3>
+        <h3>Active Sessions</h3>
 
-    {% for session in sessions %}
-        <div style="border:1px solid black; padding:10px; margin:10px;">
-            <p><strong>Course:</strong> {{ session.course_code }}</p>
-            <p><strong>Expires:</strong> {{ session.expiry }}</p>
+        {% for session in sessions %}
+            <div style="border:1px solid black; padding:10px; margin:10px;">
+                <p><strong>Course:</strong> {{ session.course_code }}</p>
+                <p><strong>Expires:</strong> {{ session.expiry }}</p>
 
-            <!-- <button onclick="startBiometric('{{ session.id }}', '{{ session.network_nonce }}')">
-                Submit Attendance
-            </button> -->
-            <button onclick="signNonce('{{ session.id }}', '{{ session.network_nonce }}')">
-                Submit Attendance
-            </button>
+                <button onclick="signNonce('{{ session.id }}', '{{ session.network_nonce }}')">
+                    Submit Attendance
+                </button>
 
-        </div>
-    {% empty %}
-        <p>No active sessions.</p>
-    {% endfor %}
+            </div>
+        {% empty %}
+            <p>No active sessions.</p>
+        {% endfor %}
 
-    <br>
-    <p id="attendanceStatus"></p>
+        <br>
+        <p id="attendanceStatus"></p>
 
-    <a href="{% url 'logout' %}">Logout</a>
+        <a href="{% url 'logout' %}">Logout</a>
+    </div>
 
 <script>
 async function startBiometric(sessionId, nonce) {
 
     /*
     ==========================================================
-    🔴 🔴 🔴  THIS IS WHERE YOUR FACE SYSTEM GOES  🔴 🔴 🔴
+    🚨 🚨 🚨  THIS IS WHERE YOUR FACE SYSTEM GOES  🚨 🚨 🚨
     ==========================================================
 
     1. Open camera
@@ -88,109 +250,23 @@ async function startBiometric(sessionId, nonce) {
     }).then(() => location.reload());
 }*/
 
-// async function signNonce(sessionId, nonce) {
-
-//     alert("Signing started");
-
-//     const privateBase64 = localStorage.getItem("device_private_key");
-
-//     if (!privateBase64) {
-//         alert("Private key not found.");
-//         return;
-//     }
-
-//     try {
-//         const binary = Uint8Array.from(atob(privateBase64), c => c.charCodeAt(0));
-
-//         const privateKey = await crypto.subtle.importKey(
-//             "pkcs8",
-//             binary.buffer,
-//             {
-//                 name: "ECDSA",
-//                 namedCurve: "P-256"
-//             },
-//             false,
-//             ["sign"]
-//         );
-
-//         alert("Private key imported");
-
-//         const encoder = new TextEncoder();
-//         const data = encoder.encode(nonce);
-
-//         const signature = await crypto.subtle.sign(
-//             {
-//                 name: "ECDSA",
-//                 hash: { name: "SHA-256" }
-//             },
-//             privateKey,
-//             data
-//         );
-
-//         alert("Nonce signed");
-
-//         let binarySig = "";
-//         const sigBytes = new Uint8Array(signature);
-//         for (let i = 0; i < sigBytes.byteLength; i++) {
-//             binarySig += String.fromCharCode(sigBytes[i]);
-//         }
-
-//         const base64Signature = btoa(binarySig);
-
-//         alert("Sending to backend");
-
-//     const response = await fetch("/student/submit/", {
-//         method: "POST",
-//         headers: {
-//             "Content-Type": "application/json",
-//             "X-CSRFToken": "{{ csrf_token }}"
-//         },
-//         body: JSON.stringify({
-//             session_id: sessionId,
-//             signed_nonce: base64Signature
-//         })
-//     });
-
-//     const result = await response.json();
-
-//     document.getElementById("attendanceStatus").innerText = result.message;
-//     document.getElementById("attendanceStatus").style.color =
-//     result.status === "success" ? "green" : "red";
-
-//     } catch (err) {
-//         alert("Signing error: " + err);
-//     }
-// }
-
-function getCSRFToken() {
-    const cookie = document.cookie
-        .split('; ')
-        .find(row => row.startsWith('csrftoken='));
-
-    return cookie ? cookie.split('=')[1] : '';
-}
-
 async function signNonce(sessionId, nonce) {
 
+    alert("Signing started");
+
+    const privateBase64 = localStorage.getItem("device_private_key");
+
+    if (!privateBase64) {
+        alert("Private key not found.");
+        return;
+    }
+
     try {
-
-        const privateBase64 = localStorage.getItem("device_private_key");
-
-        if (!privateBase64) {
-            alert("Device not registered.");
-            return;
-        }
-
-        const binary = atob(privateBase64);
-        const bytes = new Uint8Array(binary.length);
-
-        for (let i = 0; i < binary.length; i++) {
-            bytes[i] = binary.charCodeAt(i);
-        }
+        const binary = Uint8Array.from(atob(privateBase64), c => c.charCodeAt(0));
 
         const privateKey = await crypto.subtle.importKey(
             "pkcs8",
-            bytes.buffer,
+            binary.buffer,
             {
                 name: "ECDSA",
                 namedCurve: "P-256"
@@ -198,6 +274,8 @@ async function signNonce(sessionId, nonce) {
             false,
             ["sign"]
         );
+
+        alert("Private key imported");
 
         const encoder = new TextEncoder();
         const data = encoder.encode(nonce);
@@ -211,34 +289,39 @@ async function signNonce(sessionId, nonce) {
             data
         );
 
-        const signatureBytes = new Uint8Array(signature);
-        let binarySig = "";
+        alert("Nonce signed");
 
-        signatureBytes.forEach(b => binarySig += String.fromCharCode(b));
+        let binarySig = "";
+        const sigBytes = new Uint8Array(signature);
+        for (let i = 0; i < sigBytes.byteLength; i++) {
+            binarySig += String.fromCharCode(sigBytes[i]);
+        }
 
         const base64Signature = btoa(binarySig);
 
-        const response = await fetch("/student/submit/", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-CSRFToken": getCSRFToken()
-            },
-            body: JSON.stringify({
-                session_id: sessionId,
-                signed_nonce: base64Signature
-            })
-        });
+        alert("Sending to backend");
 
-        const text = await response.text();
+    const response = await fetch("/student/submit/", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": "{{ csrf_token }}"
+        },
+        body: JSON.stringify({
+            session_id: sessionId,
+            signed_nonce: base64Signature
+        })
+    });
 
-        document.getElementById("attendanceStatus").innerText = text;
+    const result = await response.json();
 
-    }
-    catch(err){
+    document.getElementById("attendanceStatus").innerText = result.message;
+    document.getElementById("attendanceStatus").style.color =
+    result.status === "success" ? "green" : "red";
+
+    } catch (err) {
         alert("Signing error: " + err);
     }
-
 }
 
 

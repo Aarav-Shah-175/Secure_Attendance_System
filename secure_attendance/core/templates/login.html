@@ -1,20 +1,148 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Secure Attendance - Login</title>
+    <style>
+        :root {
+            --bg-start: #dde8f5;
+            --bg-end: #f3f6fb;
+            --card-bg: #ffffff;
+            --card-border: #dbe3ed;
+            --text-main: #0f172a;
+            --text-muted: #475569;
+            --field-border: #cbd5e1;
+            --field-focus: #0b5f78;
+            --button-bg: #0b5f78;
+            --button-hover: #084f63;
+            --shadow: 0 20px 34px -22px rgba(15, 23, 42, 0.5);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: radial-gradient(circle at 12% 8%, #c7d9ef 0%, transparent 27%),
+                        linear-gradient(155deg, var(--bg-start), var(--bg-end));
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1.25rem;
+            color: var(--text-main);
+        }
+
+        .login-container {
+            background-color: var(--card-bg);
+            padding: 2rem;
+            border-radius: 14px;
+            box-shadow: var(--shadow);
+            width: 100%;
+            max-width: 430px;
+            border: 1px solid var(--card-border);
+            border-top: 6px solid var(--button-bg);
+        }
+
+        h2 {
+            margin-top: 0;
+            margin-bottom: 0.5rem;
+            text-align: center;
+            font-weight: 700;
+        }
+
+        .subheading {
+            margin: 0 0 1.5rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            background: #f8fbff;
+            border: 1px solid #dbe8f5;
+            border-radius: 10px;
+            padding: 0.55rem 0.7rem;
+        }
+
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+
+        label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #334155;
+        }
+
+        input[type="email"],
+        input[type="password"] {
+            padding: 0.78rem 0.85rem;
+            margin-bottom: 1rem;
+            border: 1px solid var(--field-border);
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            background-color: #f8fafc;
+        }
+
+        input[type="email"]:focus,
+        input[type="password"]:focus {
+            outline: none;
+            border-color: var(--field-focus);
+            box-shadow: 0 0 0 3px rgba(11, 95, 120, 0.15);
+            background-color: #ffffff;
+        }
+
+        button {
+            background-color: var(--button-bg);
+            color: white;
+            padding: 0.8rem;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s ease, transform 0.08s ease;
+            margin-top: 0.25rem;
+        }
+
+        button:hover {
+            background-color: var(--button-hover);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        br {
+            display: none;
+        }
+
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 1.35rem;
+            }
+        }
+    </style>
 </head>
 <body>
-    <h2>Login</h2>
+    <div class="login-container">
+        <h2>Login</h2>
+        <p class="subheading">Sign in to access your attendance portal</p>
 
-    <form method="POST">
-        {% csrf_token %}
-        <label>Email:</label><br>
-        <input type="email" name="email" required><br><br>
+        <form method="POST">
+            {% csrf_token %}
+            <label>Email:</label><br>
+            <input type="email" name="email" required><br><br>
 
-        <label>Password:</label><br>
-        <input type="password" name="password" required><br><br>
+            <label>Password:</label><br>
+            <input type="password" name="password" required><br><br>
 
-        <button type="submit">Login</button>
-    </form>
+            <button type="submit">Login</button>
+        </form>
+    </div>
 </body>
 </html>
