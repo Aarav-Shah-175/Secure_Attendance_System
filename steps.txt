@@ -1,0 +1,10 @@
+1. Turn on Hotspot
+2. Start the server with: python manage.py runserver_plus 0.0.0.0:8000 --cert-file 192.168.137.1+2.pem
+3. Go to https://192.168.137.1:8000
+4. Login with teacher credentials
+5. Start a new session.
+6. Connect to hotspot and go to https://192.168.137.1:8000 on another device
+7. Login with student credentials
+8. Register device if first time, if not, don't register again.
+9. register face if firt time, if now, don't register again.
+10. Mark Attendance
