@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Student Dashboard</title>
+    <title>Register Device</title>
     <style>
         :root {
             --bg-start: #dde8f5;
@@ -12,14 +12,12 @@
             --card-border: #dbe3ed;
             --text-main: #0f172a;
             --text-muted: #475569;
-            --line: #e2e8f0;
-            --session-bg: #f8fafc;
-            --session-border: #e2e8f0;
-            --action: #0b5f78;
-            --action-hover: #084f63;
-            --danger: #dc2626;
-            --danger-hover: #b91c1c;
-            --shadow: 0 20px 36px -24px rgba(15, 23, 42, 0.5);
+            --button-bg: #0b5f78;
+            --button-hover: #084f63;
+            --button-secondary-bg: #0e7a64;
+            --button-secondary-hover: #0b6854;
+            --status: #0e7a64;
+            --shadow: 0 20px 34px -22px rgba(15, 23, 42, 0.5);
         }
 
         * {
@@ -28,38 +26,37 @@
 
         body {
             font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background: radial-gradient(circle at 8% 8%, #c7d9ef 0%, transparent 26%),
-                        linear-gradient(160deg, var(--bg-start), var(--bg-end));
+            background: radial-gradient(circle at 12% 8%, #c7d9ef 0%, transparent 27%),
+                        linear-gradient(155deg, var(--bg-start), var(--bg-end));
             display: flex;
             justify-content: center;
-            align-items: flex-start;
+            align-items: center;
             min-height: 100vh;
             margin: 0;
-            padding: 2rem 1rem;
+            padding: 1.25rem;
             color: var(--text-main);
         }
 
-        .dashboard-container {
+        .device-container {
             background-color: var(--card-bg);
             padding: 2rem;
             border-radius: 14px;
             box-shadow: var(--shadow);
             width: 100%;
-            max-width: 500px;
+            max-width: 430px;
+            text-align: center;
             border: 1px solid var(--card-border);
-            border-top: 6px solid var(--action);
+            border-top: 6px solid var(--button-bg);
         }
 
         h2 {
             margin-top: 0;
             margin-bottom: 0.5rem;
             font-weight: 700;
-            border-bottom: 1px solid var(--line);
-            padding-bottom: 0.7rem;
         }
 
         .subheading {
-            margin: 0 0 1.2rem;
+            margin: 0 0 1.5rem;
             color: var(--text-muted);
             font-size: 0.95rem;
             background: #f8fbff;
@@ -68,282 +65,129 @@
             padding: 0.55rem 0.7rem;
         }
 
-        h3 {
-            margin-top: 1.45rem;
-            margin-bottom: 0.85rem;
-            color: #1e293b;
-            font-size: 1.05rem;
-        }
-
-        a {
-            display: inline-block;
-            color: var(--action);
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 0.92rem;
-            transition: color 0.2s;
-        }
-
-        a:hover {
-            color: var(--action-hover);
-            text-decoration: underline;
-        }
-        
-        a[href="{% url 'logout' %}"] {
-            color: var(--danger);
-            margin-top: 1.35rem;
-            display: block;
-            text-align: center;
-            border-top: 1px solid var(--line);
-            padding-top: 0.95rem;
-        }
-
-        a[href="{% url 'logout' %}"]:hover {
-            color: var(--danger-hover);
-        }
-
-        div[style*="border:1px solid black"] {
-            border: 1px solid var(--session-border) !important;
-            padding: 1rem 1.1rem !important;
-            margin: 0 0 0.9rem 0 !important;
-            border-radius: 12px !important;
-            background-color: var(--session-bg) !important;
-            border-left: 5px solid #8fb6d8 !important;
-            transition: box-shadow 0.2s ease !important;
-            transform: 0.2s ease !important;
-        }
-
-        div[style*="border:1px solid black"]:hover {
-            box-shadow: 0 12px 20px -18px rgba(15, 23, 42, 0.7) !important;
-            transform: translateY(-1px) !important;
-        }
-
-        div[style*="border:1px solid black"] p {
-            margin: 0 0 0.45rem 0;
-            font-size: 0.95rem;
-            color: var(--text-muted);
-        }
-
         button {
-            background-color: #0b5f78;
+            background-color: var(--button-bg);
             color: white;
-            padding: 0.75rem 1rem;
+            padding: 0.82rem;
             border: none;
             border-radius: 10px;
-            font-size: 0.9rem;
+            font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
             transition: background-color 0.2s ease, transform 0.08s ease;
-            margin-top: 0.5rem;
+            margin-bottom: 0.8rem;
             width: 100%;
         }
 
         button:hover {
-            background-color: #084f63;
+            background-color: var(--button-hover);
         }
 
         button:active {
             transform: translateY(1px);
         }
 
-        #attendanceStatus {
-            font-weight: 600;
-            text-align: center;
-            margin-top: 0.95rem;
-            margin-bottom: 0;
-            min-height: 1.5em;
+        button + button {
+            background-color: var(--button-secondary-bg);
         }
 
-        br {
-            display: none; 
+        button + button:hover {
+            background-color: var(--button-secondary-hover);
+        }
+
+        #status {
+            margin-top: 0.9rem;
+            margin-bottom: 0;
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--status);
+            min-height: 1.2em;
         }
 
         @media (max-width: 480px) {
-            .dashboard-container {
-                padding: 1.3rem;
+            .device-container {
+                padding: 1.35rem;
             }
         }
     </style>
 </head>
 <body>
-    <div id="cameraBox" style="display:none; margin-top:20px; text-align:center;">
-        <video id="video" width="320" height="240" autoplay></video>
-        <br><br>
-        <button onclick="captureFace()">Capture Face</button>
-    </div>
 
-    <div class="dashboard-container">
-        <h2>Student Dashboard</h2>
-        <p class="subheading">View active classes and submit attendance securely</p>
+    <div class="device-container">
+        <h2>Register This Device</h2>
+        <p class="subheading">Generate a key pair and register your public key</p>
 
-        <a href="/student/register-device/">Register Device</a>
+        <button onclick="generateKeys()">Generate Device Keys</button>
+        <button onclick="sendPublicKey()">Register Device</button>
 
-        <h3>Active Sessions</h3>
-
-        {% for session in sessions %}
-            <div style="border:1px solid black; padding:10px; margin:10px;">
-                <p><strong>Course:</strong> {{ session.course_code }}</p>
-                <p><strong>Expires:</strong> {{ session.expiry }}</p>
-
-                <button onclick="startFaceVerification('{{ session.id }}', '{{ session.network_nonce }}')">
-                    Submit Attendance
-                </button>
-
-            </div>
-        {% empty %}
-            <p>No active sessions.</p>
-        {% endfor %}
-
-        <br>
-        <p id="attendanceStatus"></p>
-
-        <a href="{% url 'logout' %}">Logout</a>
+        <p id="status"></p>
     </div>
 
 <script>
+let keyPair = null;
 
-let currentSession = null;
-let currentNonce = null;
-
-async function startFaceVerification(sessionId, nonce){
-
-    currentSession = sessionId;
-    currentNonce = nonce;
-
-    const video = document.getElementById("video");
-
-    try{
-
-        const stream = await navigator.mediaDevices.getUserMedia({video:true});
-        video.srcObject = stream;
-
-        document.getElementById("cameraBox").style.display = "block";
-
-    }catch(err){
-        alert("Camera access denied");
-    }
-}
-
-async function captureFace(){
-
-    const video = document.getElementById("video");
-
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(video, 0, 0);
-
-    const imageData = canvas.toDataURL("image/jpeg");
-
-    // stop camera
-    const stream = video.srcObject;
-    if(stream){
-        const tracks = stream.getTracks();
-        tracks.forEach(track => track.stop());
-    }
-
-    document.getElementById("cameraBox").style.display = "none";
-
-    const response = await fetch("/student/face-verify/",{
-        method:"POST",
-        headers:{
-            "Content-Type":"application/json",
-            "X-CSRFToken":"{{ csrf_token }}"
+async function generateKeys() {
+    keyPair = await window.crypto.subtle.generateKey(
+        {
+            name: "ECDSA",
+            namedCurve: "P-256"
         },
-        body:JSON.stringify({
-            image:imageData
-        })
-    });
+        true,
+        ["sign", "verify"]
+    );
 
-    const result = await response.json();
+    // Export private key
+    const privateKeyBuffer = await crypto.subtle.exportKey(
+        "pkcs8",
+        keyPair.privateKey
+    );
 
-    if(result.status === "success"){
-        alert("Face Verified 😎");
-
-        signNonce(currentSession, currentNonce);
-
-    }else{
-        alert("Face Verification Failed 💀");
+    let binary = "";
+    const bytes = new Uint8Array(privateKeyBuffer);
+    for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
     }
+
+    const privateBase64 = btoa(binary);
+    localStorage.setItem("device_private_key", privateBase64);
+
+    document.getElementById("status").innerText = "Keys generated.";
 }
 
-async function signNonce(sessionId, nonce) {
+async function sendPublicKey() {
 
-    alert("Signing started");
-
-    const privateBase64 = localStorage.getItem("device_private_key");
-
-    if (!privateBase64) {
-        alert("Private key not found.");
+    if (!keyPair) {
+        alert("Generate keys first!");
         return;
     }
 
-    try {
-        const binary = Uint8Array.from(atob(privateBase64), c => c.charCodeAt(0));
+    const exported = await window.crypto.subtle.exportKey(
+        "spki",
+        keyPair.publicKey
+    );
 
-        const privateKey = await crypto.subtle.importKey(
-            "pkcs8",
-            binary.buffer,
-            {
-                name: "ECDSA",
-                namedCurve: "P-256"
-            },
-            false,
-            ["sign"]
-        );
+    let binary = "";
+    const bytes = new Uint8Array(exported);
+    for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
 
-        alert("Private key imported");
+    const base64 = btoa(binary);
 
-        const encoder = new TextEncoder();
-        const data = encoder.encode(nonce);
+    const pem = `-----BEGIN PUBLIC KEY-----\n${base64}\n-----END PUBLIC KEY-----`;
 
-        const signature = await crypto.subtle.sign(
-            {
-                name: "ECDSA",
-                hash: { name: "SHA-256" }
-            },
-            privateKey,
-            data
-        );
-
-        alert("Nonce signed");
-
-        let binarySig = "";
-        const sigBytes = new Uint8Array(signature);
-        for (let i = 0; i < sigBytes.byteLength; i++) {
-            binarySig += String.fromCharCode(sigBytes[i]);
-        }
-
-        const base64Signature = btoa(binarySig);
-
-        alert("Sending to backend");
-
-    const response = await fetch("/student/submit/", {
+    fetch("/student/register-device/", {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
             "X-CSRFToken": "{{ csrf_token }}"
         },
-        body: JSON.stringify({
-            session_id: sessionId,
-            signed_nonce: base64Signature
-        })
+        body: JSON.stringify({ public_key: pem })
+    }).then(() => {
+        document.getElementById("status").innerText = "Device registered.";
     });
-
-    const result = await response.json();
-
-    document.getElementById("attendanceStatus").innerText = result.message;
-    document.getElementById("attendanceStatus").style.color =
-    result.status === "success" ? "green" : "red";
-
-    } catch (err) {
-        alert("Signing error: " + err);
-    }
 }
-
-
 </script>
+
 </body>
 </html>

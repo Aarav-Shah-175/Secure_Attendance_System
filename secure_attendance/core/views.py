@@ -22,7 +22,6 @@ import torch
 import json
 import os
 from PIL import Image
-from django.http import JsonResponse
 from facenet_pytorch import MTCNN, InceptionResnetV1
 
 @login_required
@@ -36,7 +35,8 @@ def export_xlsx(request, session_id):
     ws.append(["Student", "Timestamp", "IP"])
 
     for r in records:
-        ws.append([r.student.email, str(r.timestamp), r.client_ip])
+        ist_time = timezone.localtime(r.timestamp)
+        ws.append([r.student.email, ist_time.strftime("%Y-%m-%d %H:%M:%S"), r.client_ip])
 
     response = HttpResponse(
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -61,7 +61,8 @@ def export_csv(request, session_id):
     writer.writerow(["Student", "Timestamp", "IP"])
 
     for r in records:
-        writer.writerow([r.student.email, r.timestamp, r.client_ip])
+        ist_time = timezone.localtime(r.timestamp)
+        writer.writerow([r.student.email, ist_time.strftime("%Y-%m-%d %H:%M:%S"), r.client_ip])
 
     return response
 
@@ -211,6 +212,45 @@ mtcnn = MTCNN(image_size = 160, margin = 0, device = device)
 resnet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
 
 
+
+@login_required
+def register_face(request):
+
+    if request.method == "POST":
+
+        data = json.loads(request.body)
+        image_data = data["image"]
+
+        image_data = image_data.split(",")[1]
+        image_bytes = base64.b64decode(image_data)
+
+        np_img = np.frombuffer(image_bytes, np.uint8)
+        frame = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
+
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        img = Image.fromarray(frame_rgb)
+
+        face = mtcnn(img)
+
+        if face is None:
+            return JsonResponse({"status": "fail", "message": "No face detected"})
+
+        face = face.unsqueeze(0).to(device)
+
+        with torch.no_grad():
+            embedding = resnet(face)
+
+        embedding = embedding.cpu().numpy()
+
+        path = f"embeddings/{request.user.id}.npy"
+        os.makedirs("embeddings", exist_ok=True)
+
+        np.save(path, embedding)
+
+        return JsonResponse({"status": "success"})
+
+
+
 def face_verify(request):
 
     if request.method == "POST":
@@ -244,7 +284,7 @@ def face_verify(request):
         # get student id
         student_id = request.user.id
 
-        embedding_path = f"embeddings/student_{student_id}.npy"
+        embedding_path = f"embeddings/{student_id}.npy"
 
         if not os.path.exists(embedding_path):
             return JsonResponse({

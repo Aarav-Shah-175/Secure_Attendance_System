@@ -84,10 +84,10 @@
             transition: color 0.2s;
         }
 
-        a:hover {
+        /* a:hover {
             color: var(--action-hover);
             text-decoration: underline;
-        }
+        } */
         
         a[href="{% url 'logout' %}"] {
             color: var(--danger);
@@ -124,7 +124,7 @@
             color: var(--text-muted);
         }
 
-        button {
+        button, .button-link {
             background-color: #0b5f78;
             color: white;
             padding: 0.75rem 1rem;
@@ -136,13 +136,16 @@
             transition: background-color 0.2s ease, transform 0.08s ease;
             margin-top: 0.5rem;
             width: 100%;
+            display: block;
+            text-decoration: none;
+            text-align: center;
         }
 
-        button:hover {
+        button:hover,.button-link:hover {
             background-color: #084f63;
         }
 
-        button:active {
+        button:active, .button-link:active {
             transform: translateY(1px);
         }
 
@@ -166,11 +169,20 @@
     </style>
 </head>
 <body>
+    <div id="cameraBox" style="display:none; margin-top:20px; text-align:center;">
+        <video id="video" width="320" height="240" autoplay></video>
+        <br><br>
+        <button onclick="captureFace()">Capture Face</button>
+    </div>
+
     <div class="dashboard-container">
         <h2>Student Dashboard</h2>
         <p class="subheading">View active classes and submit attendance securely</p>
 
-        <a href="/student/register-device/">Register Device</a>
+        <a href="/student/register-device/" class="button-link">Register Device</a>
+        <button onclick="startFaceRegistration()">
+            Register Face
+        </button>
 
         <h3>Active Sessions</h3>
 
@@ -179,7 +191,7 @@
                 <p><strong>Course:</strong> {{ session.course_code }}</p>
                 <p><strong>Expires:</strong> {{ session.expiry }}</p>
 
-                <button onclick="signNonce('{{ session.id }}', '{{ session.network_nonce }}')">
+                <button onclick="startFaceVerification('{{ session.id }}', '{{ session.network_nonce }}')">
                     Submit Attendance
                 </button>
 
@@ -195,60 +207,134 @@
     </div>
 
 <script>
-async function startBiometric(sessionId, nonce) {
+let registerMode = false;
+let currentSession = null;
+let currentNonce = null;
 
-    /*
-    ==========================================================
-    🚨 🚨 🚨  THIS IS WHERE YOUR FACE SYSTEM GOES  🚨 🚨 🚨
-    ==========================================================
+async function startFaceRegistration(){
 
-    1. Open camera
-    2. Run face detection
-    3. Generate embedding
-    4. Compare with stored embedding (or call backend)
-    5. If match -> proceed
-    6. If fail -> STOP
+    registerMode = true;
 
-    For now, we simulate success.
-    */
+    const video = document.getElementById("video");
 
-    let biometricPassed = true;  // Replace with real verification
+    try{
 
-    if (!biometricPassed) {
-        alert("Face verification failed.");
-        return;
+        const stream = await navigator.mediaDevices.getUserMedia({video:true});
+        video.srcObject = stream;
+
+        document.getElementById("cameraBox").style.display = "block";
+
+    }catch(err){
+        alert("Camera access denied");
     }
-
-    signNonce(sessionId, nonce);
 }
 
-/*async function signNonce(sessionId, nonce) {
+async function startFaceVerification(sessionId, nonce){
 
-    const encoder = new TextEncoder();
-    const data = encoder.encode(nonce);
+    currentSession = sessionId;
+    currentNonce = nonce;
 
-    const signature = await crypto.subtle.sign(
-        {
-            name: "ECDSA",
-            hash: { name: "SHA-256" }
-        },
-        privateKey,
-        data
-    );
-    
+    const video = document.getElementById("video");
 
-    const base64Signature =
-        btoa(String.fromCharCode(...new Uint8Array(signature)));
+    try{
 
-    fetch("/student/submit/", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "X-CSRFToken": "{{ csrf_token }}"
-        },
-        body: `session_id=${sessionId}&signed_nonce=${base64Signature}`
-    }).then(() => location.reload());
-}*/
+        const stream = await navigator.mediaDevices.getUserMedia({video:true});
+        video.srcObject = stream;
+
+        document.getElementById("cameraBox").style.display = "block";
+
+    }catch(err){
+        alert("Camera access denied");
+    }
+}
+
+async function captureFace(){
+
+    try{
+
+        console.log("Capture started");
+
+        const video = document.getElementById("video");
+
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        console.log("Video size:", canvas.width, canvas.height);
+
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0);
+
+        const imageData = canvas.toDataURL("image/jpeg");
+
+        console.log("Image captured");
+
+        const stream = video.srcObject;
+        if(stream){
+            const tracks = stream.getTracks();
+            tracks.forEach(track => track.stop());
+        }
+
+        document.getElementById("cameraBox").style.display = "none";
+
+        if(registerMode){
+
+            console.log("Registering face");
+
+            const response = await fetch("/student/register-face/",{
+                method:"POST",
+                headers:{
+                    "Content-Type":"application/json",
+                    "X-CSRFToken":"{{ csrf_token }}"
+                },
+                body:JSON.stringify({
+                    image:imageData
+                })
+            });
+
+            const result = await response.json();
+
+            console.log(result);
+
+            if(result.status === "success"){
+                alert("Face Registered Successfully");
+            }else{
+                alert("Face Registration Failed");
+            }
+
+            registerMode = false;
+            return;
+        }
+
+        console.log("Verifying face");
+
+        const response = await fetch("/student/face-verify/",{
+            method:"POST",
+            headers:{
+                "Content-Type":"application/json",
+                "X-CSRFToken":"{{ csrf_token }}"
+            },
+            body:JSON.stringify({
+                image:imageData
+            })
+        });
+
+        const result = await response.json();
+
+        console.log(result);
+
+        if(result.status === "success"){
+            alert("Face Verified");
+            signNonce(currentSession, currentNonce);
+        }else{
+            alert("Face Verification Failed");
+        }
+
+    }catch(err){
+        console.error("Capture error:", err);
+        alert("Error: " + err);
+    }
+}
 
 async function signNonce(sessionId, nonce) {
 
