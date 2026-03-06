@@ -13,6 +13,18 @@ import csv
 from django.http import HttpResponse#type: ignore
 from openpyxl import Workbook#type: ignore
 
+# face recognition imports
+
+import base64
+import cv2
+import numpy as np
+import torch
+import json
+import os
+from PIL import Image
+from django.http import JsonResponse
+from facenet_pytorch import MTCNN, InceptionResnetV1
+
 @login_required
 def export_xlsx(request, session_id):
 
@@ -190,3 +202,66 @@ def verify_integrity_view(request, session_id):
     })
 
 
+
+# face recognition code
+
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+mtcnn = MTCNN(image_size = 160, margin = 0, device = device)
+resnet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
+
+
+def face_verify(request):
+
+    if request.method == "POST":
+
+        data = json.loads(request.body)
+        image_data = data["image"]
+
+        # remove base64 header
+        image_data = image_data.split(",")[1]
+
+        image_bytes = base64.b64decode(image_data)
+
+        np_img = np.frombuffer(image_bytes, np.uint8)
+        frame = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
+
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        img = Image.fromarray(frame_rgb)
+
+        face = mtcnn(img)
+
+        if face is None:
+            return JsonResponse({"status": "fail"})
+
+        face = face.unsqueeze(0).to(device)
+
+        with torch.no_grad():
+            embedding = resnet(face)
+
+        embedding = embedding.cpu().numpy()
+
+        # get student id
+        student_id = request.user.id
+
+        embedding_path = f"embeddings/student_{student_id}.npy"
+
+        if not os.path.exists(embedding_path):
+            return JsonResponse({
+                "status": "fail",
+                "message": "Face not registered"
+            })
+
+        stored_embedding = np.load(embedding_path)
+
+        emb1 = torch.tensor(stored_embedding)
+        emb2 = torch.tensor(embedding)
+
+        similarity = torch.nn.functional.cosine_similarity(emb1, emb2).item()
+
+        print("Cosine similarity:", similarity)
+
+        if similarity > 0.7:
+            return JsonResponse({"status": "success"})
+        else:
+            return JsonResponse({"status": "fail"})

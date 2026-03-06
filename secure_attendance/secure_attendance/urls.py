@@ -17,5 +17,6 @@ urlpatterns = [
     path('teacher/verify/<uuid:session_id>/', views.verify_integrity_view, name='verify_integrity'),
     path('teacher/export-csv/<uuid:session_id>/', views.export_csv, name='export_csv'),
     path('teacher/export-xlsx/<uuid:session_id>/', views.export_xlsx, name='export_xlsx'),
+    path("student/face-verify/", views.face_verify),
 
 ]
