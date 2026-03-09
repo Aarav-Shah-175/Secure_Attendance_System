@@ -28,29 +28,23 @@ def create_attendance_session(professor, course_code, gateway_ip, subnet_range):
         active=True
     ).update(active=False)
 
-    # # 1. Automatic Network Detection
-    # gateway_ip = get_local_hotspot_ip()
-    # if not gateway_ip:
-    #     raise Exception("Hotspot IP not detected. Please ensure your hotspot is turned on.")
-
-    # Calculate subnet (e.g., 192.168.137.1 -> 192.168.137.0/24)
     network = ipaddress.ip_network(gateway_ip + '/24', strict=False)
     subnet_range = str(network)
 
-    # 2. Session Metadata
+    # 1. Session Metadata
     session_id = str(uuid.uuid4())
     timestamp = timezone.now()
     expiry = timestamp + datetime.timedelta(minutes=30)
     network_nonce = os.urandom(32).hex()
 
-    # 3. Cryptographic Signing
+    # 2. Cryptographic Signing
     metadata_string = (session_id + course_code + str(timestamp) + str(expiry))
     metadata_hash = sha256_hash(metadata_string)
     
     private_key_pem = aes_decrypt(professor.private_key_encrypted).decode()
     signature = sign_data(private_key_pem, metadata_hash.encode())
 
-    # 4. Save to Database
+    # 3. Save to Database
     session = AttendanceSession.objects.create(
         id=session_id,
         professor=professor,
