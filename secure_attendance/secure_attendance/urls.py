@@ -1,5 +1,5 @@
-from django.contrib import admin# type: ignore
-from django.urls import path# type: ignore
+from django.contrib import admin
+from django.urls import path
 from core import views
 
 urlpatterns = [
@@ -8,15 +8,27 @@ urlpatterns = [
     path('', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
 
+    # Teacher endpoints
     path('teacher/dashboard/', views.teacher_dashboard, name='teacher_dashboard'),
     path('teacher/start-session/', views.start_session, name='start_session'),
-
-    path('student/dashboard/', views.student_dashboard, name='student_dashboard'),
-    path('student/register-device/', views.register_device_view, name='register_device'),
-    path('student/submit/', views.submit_attendance_view, name='submit_attendance'),
     path('teacher/verify/<uuid:session_id>/', views.verify_integrity_view, name='verify_integrity'),
     path('teacher/export-csv/<uuid:session_id>/', views.export_csv, name='export_csv'),
     path('teacher/export-xlsx/<uuid:session_id>/', views.export_xlsx, name='export_xlsx'),
-    path("student/face-verify/", views.face_verify, name="face_verify"),
-    path("student/register-face/", views.register_face, name="register_face"),
+    path('teacher/revoke-passkey/<uuid:passkey_id>/', views.revoke_passkey_v2_view, name='revoke_passkey'),
+
+    # Legacy student endpoints
+    path('student/dashboard/', views.student_dashboard, name='student_dashboard'),
+    path('student/register-device/', views.register_device_view, name='register_device'),
+    path('student/submit/', views.submit_attendance_view, name='submit_attendance'),
+    path('student/face-verify/', views.face_verify, name='face_verify'),
+    path('student/register-face/', views.register_face, name='register_face'),
+
+    # Secure Presence V2 endpoints
+    path('student/passkey/register/options/', views.passkey_register_options_view, name='passkey_register_options'),
+    path('student/passkey/register/verify/', views.passkey_register_verify_view, name='passkey_register_verify'),
+    path('student/secure-v2/start-attempt/', views.start_attempt_v2_view, name='start_attempt_v2'),
+    path('student/presence/heartbeat/', views.presence_heartbeat_v2_view, name='presence_heartbeat_v2'),
+    path('student/secure-v2/verify-liveness/', views.verify_liveness_v2_view, name='verify_liveness_v2'),
+    path('student/secure-v2/request-challenge/', views.passkey_authenticate_options_view, name='passkey_authenticate_options'),
+    path('student/secure-v2/submit/', views.submit_attendance_v2_view, name='submit_attendance_v2'),
 ]

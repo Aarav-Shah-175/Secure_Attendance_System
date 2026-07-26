@@ -43,7 +43,7 @@
             border-radius: 14px;
             box-shadow: var(--shadow);
             width: 100%;
-            max-width: 440px;
+            max-width: 460px;
             border: 1px solid var(--card-border);
             border-top: 6px solid var(--primary);
         }
@@ -69,7 +69,7 @@
         form {
             display: flex;
             flex-direction: column;
-            gap: 0.35rem;
+            gap: 0.85rem;
         }
 
         label {
@@ -78,19 +78,21 @@
             color: #334155;
         }
 
-        input[name="course_code"] {
+        input[name="course_code"], select[name="security_mode"] {
             width: 100%;
             padding: 0.78rem 0.85rem;
             border: 1px solid var(--field-border);
             border-radius: 10px;
             font-size: 1rem;
             transition: border-color 0.2s ease, box-shadow 0.2s ease;
-            text-transform: uppercase;
-            margin-bottom: 1rem;
             background-color: #f8fafc;
         }
 
-        input[name="course_code"]:focus {
+        input[name="course_code"] {
+            text-transform: uppercase;
+        }
+
+        input[name="course_code"]:focus, select[name="security_mode"]:focus {
             outline: none;
             border-color: var(--field-focus);
             box-shadow: 0 0 0 3px rgba(11, 95, 120, 0.15);
@@ -107,16 +109,11 @@
             font-weight: 600;
             cursor: pointer;
             transition: background-color 0.2s ease, transform 0.08s ease;
-            margin: 0.25rem 0 1.25rem;
-            letter-spacing: 0.2px;
+            margin-top: 0.5rem;
         }
 
         button:hover {
             background-color: var(--primary-hover);
-        }
-
-        button:active {
-            transform: translateY(1px);
         }
 
         a[href="{% url 'teacher_dashboard' %}"] {
@@ -126,24 +123,9 @@
             text-decoration: none;
             font-size: 0.9rem;
             font-weight: 600;
-            transition: color 0.2s ease;
+            margin-top: 1rem;
             border-top: 1px solid #e2e8f0;
             padding-top: 0.95rem;
-        }
-
-        a[href="{% url 'teacher_dashboard' %}"]:hover {
-            color: #0f172a;
-            text-decoration: underline;
-        }
-
-        br {
-            display: none;
-        }
-
-        @media (max-width: 480px) {
-            .session-container {
-                padding: 1.35rem;
-            }
         }
     </style>
 </head>
@@ -154,14 +136,23 @@
 
         <form method="POST">
             {% csrf_token %}
-            <label>Course Code:</label><br>
-            <input name="course_code" required><br><br>
+            <div>
+                <label>Course Code:</label>
+                <input name="course_code" required placeholder="e.g. CS101">
+            </div>
+
+            <div>
+                <label>Security Mode:</label>
+                <select name="security_mode">
+                    <option value="legacy">Legacy Mode (Browser ECDSA Key)</option>
+                    <option value="secure_presence_v2" selected>Secure Presence V2 (Passkey + Server Liveness)</option>
+                </select>
+            </div>
 
             <button type="submit">Start Session</button>
         </form>
 
-        <br>
-        <a href="{% url 'teacher_dashboard' %}">Back</a>
+        <a href="{% url 'teacher_dashboard' %}">Back to Dashboard</a>
     </div>
 </body>
 </html>

@@ -22,9 +22,7 @@
             --shadow: 0 20px 36px -24px rgba(15, 23, 42, 0.5);
         }
 
-        * {
-            box-sizing: border-box;
-        }
+        * { box-sizing: border-box; }
 
         body {
             font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -45,7 +43,7 @@
             border-radius: 14px;
             box-shadow: var(--shadow);
             width: 100%;
-            max-width: 500px;
+            max-width: 520px;
             border: 1px solid var(--card-border);
             border-top: 6px solid var(--action);
         }
@@ -75,54 +73,26 @@
             font-size: 1.05rem;
         }
 
-        a {
+        .session-card {
+            border: 1px solid var(--session-border);
+            padding: 1rem 1.1rem;
+            margin: 0 0 0.9rem 0;
+            border-radius: 12px;
+            background-color: var(--session-bg);
+            border-left: 5px solid #0b5f78;
+        }
+
+        .badge {
             display: inline-block;
-            color: var(--action);
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 0.92rem;
-            transition: color 0.2s;
+            padding: 0.2rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
         }
 
-        /* a:hover {
-            color: var(--action-hover);
-            text-decoration: underline;
-        } */
-        
-        a[href="{% url 'logout' %}"] {
-            color: var(--danger);
-            margin-top: 1.35rem;
-            display: block;
-            text-align: center;
-            border-top: 1px solid var(--line);
-            padding-top: 0.95rem;
-        }
-
-        a[href="{% url 'logout' %}"]:hover {
-            color: var(--danger-hover);
-        }
-
-        div[style*="border:1px solid black"] {
-            border: 1px solid var(--session-border) !important;
-            padding: 1rem 1.1rem !important;
-            margin: 0 0 0.9rem 0 !important;
-            border-radius: 12px !important;
-            background-color: var(--session-bg) !important;
-            border-left: 5px solid #8fb6d8 !important;
-            transition: box-shadow 0.2s ease !important;
-            transform: 0.2s ease !important;
-        }
-
-        div[style*="border:1px solid black"]:hover {
-            box-shadow: 0 12px 20px -18px rgba(15, 23, 42, 0.7) !important;
-            transform: translateY(-1px) !important;
-        }
-
-        div[style*="border:1px solid black"] p {
-            margin: 0 0 0.45rem 0;
-            font-size: 0.95rem;
-            color: var(--text-muted);
-        }
+        .badge-legacy { background-color: #e2e8f0; color: #475569; }
+        .badge-v2 { background-color: #dcfce7; color: #166534; }
 
         button, .button-link {
             background-color: #0b5f78;
@@ -141,13 +111,10 @@
             text-align: center;
         }
 
-        button:hover,.button-link:hover {
-            background-color: #084f63;
-        }
+        button:hover, .button-link:hover { background-color: #084f63; }
 
-        button:active, .button-link:active {
-            transform: translateY(1px);
-        }
+        .btn-passkey { background-color: #166534; }
+        .btn-passkey:hover { background-color: #14532d; }
 
         #attendanceStatus {
             font-weight: 600;
@@ -157,14 +124,15 @@
             min-height: 1.5em;
         }
 
-        br {
-            display: none; 
-        }
-
-        @media (max-width: 480px) {
-            .dashboard-container {
-                padding: 1.3rem;
-            }
+        a[href="{% url 'logout' %}"] {
+            color: var(--danger);
+            margin-top: 1.35rem;
+            display: block;
+            text-align: center;
+            border-top: 1px solid var(--line);
+            padding-top: 0.95rem;
+            text-decoration: none;
+            font-weight: 600;
         }
     </style>
 </head>
@@ -179,30 +147,40 @@
         <h2>Student Dashboard</h2>
         <p class="subheading">View active classes and submit attendance securely</p>
 
-        <a href="/student/register-device/" class="button-link">Register Device</a>
-        <button onclick="startFaceRegistration()">
-            Register Face
+        <button onclick="registerPasskey()" class="btn-passkey">
+            Enrol WebAuthn Passkey (Secure V2)
         </button>
+
+        <a href="/student/register-device/" class="button-link">Register Legacy Device</a>
+        <button onclick="startFaceRegistration()">Register Face Embedding</button>
 
         <h3>Active Sessions</h3>
 
         {% for session in sessions %}
-            <div style="border:1px solid black; padding:10px; margin:10px;">
-                <p><strong>Course:</strong> {{ session.course_code }}</p>
+            <div class="session-card">
+                <p>
+                    <strong>Course:</strong> {{ session.course_code }}
+                    <span class="badge {% if session.security_mode == 'secure_presence_v2' %}badge-v2{% else %}badge-legacy{% endif %}">
+                        {{ session.security_mode }}
+                    </span>
+                </p>
                 <p><strong>Expires:</strong> {{ session.expiry }}</p>
 
-                <button onclick="startFaceVerification('{{ session.id }}', '{{ session.network_nonce }}')">
-                    Submit Attendance
-                </button>
-
+                {% if session.security_mode == 'secure_presence_v2' %}
+                    <button onclick="submitAttendanceV2('{{ session.id }}')">
+                        Submit Secure V2 Attendance
+                    </button>
+                {% else %}
+                    <button onclick="startFaceVerification('{{ session.id }}', '{{ session.network_nonce }}')">
+                        Submit Legacy Attendance
+                    </button>
+                {% endif %}
             </div>
         {% empty %}
             <p>No active sessions.</p>
         {% endfor %}
 
-        <br>
         <p id="attendanceStatus"></p>
-
         <a href="{% url 'logout' %}">Logout</a>
     </div>
 
@@ -211,137 +189,269 @@ let registerMode = false;
 let currentSession = null;
 let currentNonce = null;
 
-async function startFaceRegistration(){
+// ---------- WEBAUTHN UTILITIES ----------
+function bufferToBase64Url(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
 
-    registerMode = true;
+function base64UrlToBuffer(base64url) {
+    let padding = "=".repeat((4 - base64url.length % 4) % 4);
+    let base64 = (base64url + padding).replace(/-/g, "+").replace(/_/g, "/");
+    let raw = atob(base64);
+    let buffer = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) {
+        buffer[i] = raw.charCodeAt(i);
+    }
+    return buffer.buffer;
+}
 
+// ---------- PASSKEY ENROLMENT ----------
+async function registerPasskey() {
+    try {
+        const optRes = await fetch("/student/passkey/register/options/", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": "{{ csrf_token }}"
+            }
+        });
+        const options = await optRes.json();
+        if (options.error) {
+            alert("Error: " + options.error);
+            return;
+        }
+
+        options.challenge = base64UrlToBuffer(options.challenge);
+        options.user.id = new TextEncoder().encode(options.user.id);
+        if (options.excludeCredentials) {
+            options.excludeCredentials.forEach(c => c.id = base64UrlToBuffer(c.id));
+        }
+
+        const cred = await navigator.credentials.create({ publicKey: options });
+
+        const credJSON = {
+            id: cred.id,
+            rawId: bufferToBase64Url(cred.rawId),
+            type: cred.type,
+            response: {
+                attestationObject: bufferToBase64Url(cred.response.attestationObject),
+                clientDataJSON: bufferToBase64Url(cred.response.clientDataJSON),
+            }
+        };
+
+        const verifyRes = await fetch("/student/passkey/register/verify/", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": "{{ csrf_token }}"
+            },
+            body: JSON.stringify(credJSON)
+        });
+
+        const result = await verifyRes.json();
+        alert(result.message || "Passkey registration completed.");
+    } catch (err) {
+        alert("Passkey error: " + err);
+    }
+}
+
+// ---------- SECURE V2 ATTENDANCE FLOW ----------
+async function submitAttendanceV2(sessionId) {
+    const statusEl = document.getElementById("attendanceStatus");
+    statusEl.innerText = "Initializing attempt...";
+
+    try {
+        // Step 1: Start attempt
+        const startRes = await fetch("/student/secure-v2/start-attempt/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
+            body: JSON.stringify({ session_id: sessionId })
+        });
+        const startData = await startRes.json();
+        if (startData.status !== "success") {
+            statusEl.innerText = "Attempt failed: " + (startData.message || startData.error);
+            statusEl.style.color = "red";
+            return;
+        }
+
+        const attemptId = startData.attempt_id;
+
+        // Step 2: Send presence heartbeat
+        await fetch("/student/presence/heartbeat/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
+            body: JSON.stringify({ attempt_id: attemptId })
+        });
+
+        // Step 3: Capture face frame for server liveness
+        statusEl.innerText = "Opening camera for identity verification...";
+        const frameData = await captureFrameFromCamera();
+        
+        statusEl.innerText = "Evaluating liveness & biometric match...";
+        const liveRes = await fetch("/student/secure-v2/verify-liveness/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
+            body: JSON.stringify({ attempt_id: attemptId, image: frameData })
+        });
+        const liveData = await liveRes.json();
+        if (liveData.status !== "success") {
+            statusEl.innerText = "Liveness failed: " + (liveData.message || liveData.error);
+            statusEl.style.color = "red";
+            return;
+        }
+
+        // Step 4: Request WebAuthn challenge
+        statusEl.innerText = "Requesting passkey assertion challenge...";
+        const chalRes = await fetch("/student/secure-v2/request-challenge/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
+            body: JSON.stringify({ attempt_id: attemptId })
+        });
+        const chalData = await chalRes.json();
+        if (chalData.status !== "success") {
+            statusEl.innerText = "Challenge error: " + (chalData.message || chalData.error);
+            statusEl.style.color = "red";
+            return;
+        }
+
+        const authOpts = chalData.options;
+        authOpts.challenge = base64UrlToBuffer(authOpts.challenge);
+        if (authOpts.allowCredentials) {
+            authOpts.allowCredentials.forEach(c => c.id = base64UrlToBuffer(c.id));
+        }
+
+        // Step 5: WebAuthn passkey assertion prompt
+        statusEl.innerText = "Authorize passkey prompt...";
+        const assertion = await navigator.credentials.get({ publicKey: authOpts });
+
+        const assertionJSON = {
+            id: assertion.id,
+            rawId: bufferToBase64Url(assertion.rawId),
+            type: assertion.type,
+            response: {
+                authenticatorData: bufferToBase64Url(assertion.response.authenticatorData),
+                clientDataJSON: bufferToBase64Url(assertion.response.clientDataJSON),
+                signature: bufferToBase64Url(assertion.response.signature),
+                userHandle: assertion.response.userHandle ? bufferToBase64Url(assertion.response.userHandle) : null,
+            }
+        };
+
+        // Step 6: Submit final assertion
+        statusEl.innerText = "Verifying assertion and completing record...";
+        const submitRes = await fetch("/student/secure-v2/submit/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
+            body: JSON.stringify({ attempt_id: attemptId, credential: assertionJSON })
+        });
+        const submitData = await submitRes.json();
+
+        statusEl.innerText = submitData.message || (submitData.status === "success" ? "Attendance Recorded!" : "Submission Failed");
+        statusEl.style.color = submitData.status === "success" ? "green" : "red";
+
+    } catch (err) {
+        statusEl.innerText = "Error: " + err;
+        statusEl.style.color = "red";
+    }
+}
+
+async function captureFrameFromCamera() {
     const video = document.getElementById("video");
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    video.srcObject = stream;
+    document.getElementById("cameraBox").style.display = "block";
 
-    try{
+    return new Promise((resolve) => {
+        setTimeout(() => {
+            const canvas = document.createElement("canvas");
+            canvas.width = video.videoWidth || 320;
+            canvas.height = video.videoHeight || 240;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(video, 0, 0);
+            const imageData = canvas.toDataURL("image/jpeg");
 
-        const stream = await navigator.mediaDevices.getUserMedia({video:true});
+            stream.getTracks().forEach(t => t.stop());
+            document.getElementById("cameraBox").style.display = "none";
+            resolve(imageData);
+        }, 1000);
+    });
+}
+
+// ---------- LEGACY FLOW FUNCTIONS ----------
+async function startFaceRegistration() {
+    registerMode = true;
+    const video = document.getElementById("video");
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         video.srcObject = stream;
-
         document.getElementById("cameraBox").style.display = "block";
-
-    }catch(err){
+    } catch (err) {
         alert("Camera access denied");
     }
 }
 
-async function startFaceVerification(sessionId, nonce){
-
+async function startFaceVerification(sessionId, nonce) {
     currentSession = sessionId;
     currentNonce = nonce;
-
     const video = document.getElementById("video");
-
-    try{
-
-        const stream = await navigator.mediaDevices.getUserMedia({video:true});
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         video.srcObject = stream;
-
         document.getElementById("cameraBox").style.display = "block";
-
-    }catch(err){
+    } catch (err) {
         alert("Camera access denied");
     }
 }
 
-async function captureFace(){
-
-    try{
-
-        console.log("Capture started");
-
+async function captureFace() {
+    try {
         const video = document.getElementById("video");
-
         const canvas = document.createElement("canvas");
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-
-        console.log("Video size:", canvas.width, canvas.height);
-
         const ctx = canvas.getContext("2d");
         ctx.drawImage(video, 0, 0);
-
         const imageData = canvas.toDataURL("image/jpeg");
 
-        console.log("Image captured");
-
         const stream = video.srcObject;
-        if(stream){
-            const tracks = stream.getTracks();
-            tracks.forEach(track => track.stop());
-        }
-
+        if (stream) stream.getTracks().forEach(track => track.stop());
         document.getElementById("cameraBox").style.display = "none";
 
-        if(registerMode){
-
-            console.log("Registering face");
-
-            const response = await fetch("/student/register-face/",{
-                method:"POST",
-                headers:{
-                    "Content-Type":"application/json",
-                    "X-CSRFToken":"{{ csrf_token }}"
-                },
-                body:JSON.stringify({
-                    image:imageData
-                })
+        if (registerMode) {
+            const response = await fetch("/student/register-face/", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
+                body: JSON.stringify({ image: imageData })
             });
-
             const result = await response.json();
-
-            console.log(result);
-
-            if(result.status === "success"){
-                alert("Face Registered Successfully");
-            }else{
-                alert("Face Registration Failed");
-            }
-
+            alert(result.status === "success" ? "Face Registered Successfully" : "Face Registration Failed");
             registerMode = false;
             return;
         }
 
-        console.log("Verifying face");
-
-        const response = await fetch("/student/face-verify/",{
-            method:"POST",
-            headers:{
-                "Content-Type":"application/json",
-                "X-CSRFToken":"{{ csrf_token }}"
-            },
-            body:JSON.stringify({
-                image:imageData
-            })
+        const response = await fetch("/student/face-verify/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
+            body: JSON.stringify({ image: imageData })
         });
-
         const result = await response.json();
 
-        console.log(result);
-
-        if(result.status === "success"){
-            alert("Face Verified");
+        if (result.status === "success") {
             signNonce(currentSession, currentNonce);
-        }else{
+        } else {
             alert("Face Verification Failed");
         }
-
-    }catch(err){
-        console.error("Capture error:", err);
-        alert("Error: " + err);
+    } catch (err) {
+        alert("Capture error: " + err);
     }
 }
 
 async function signNonce(sessionId, nonce) {
-
-    alert("Signing started");
-
     const privateBase64 = localStorage.getItem("device_private_key");
-
     if (!privateBase64) {
         alert("Private key not found.");
         return;
@@ -349,68 +459,36 @@ async function signNonce(sessionId, nonce) {
 
     try {
         const binary = Uint8Array.from(atob(privateBase64), c => c.charCodeAt(0));
-
         const privateKey = await crypto.subtle.importKey(
-            "pkcs8",
-            binary.buffer,
-            {
-                name: "ECDSA",
-                namedCurve: "P-256"
-            },
-            false,
-            ["sign"]
+            "pkcs8", binary.buffer, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]
         );
-
-        alert("Private key imported");
 
         const encoder = new TextEncoder();
         const data = encoder.encode(nonce);
-
         const signature = await crypto.subtle.sign(
-            {
-                name: "ECDSA",
-                hash: { name: "SHA-256" }
-            },
-            privateKey,
-            data
+            { name: "ECDSA", hash: { name: "SHA-256" } }, privateKey, data
         );
-
-        alert("Nonce signed");
 
         let binarySig = "";
         const sigBytes = new Uint8Array(signature);
         for (let i = 0; i < sigBytes.byteLength; i++) {
             binarySig += String.fromCharCode(sigBytes[i]);
         }
-
         const base64Signature = btoa(binarySig);
 
-        alert("Sending to backend");
+        const response = await fetch("/student/submit/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
+            body: JSON.stringify({ session_id: sessionId, signed_nonce: base64Signature })
+        });
 
-    const response = await fetch("/student/submit/", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "X-CSRFToken": "{{ csrf_token }}"
-        },
-        body: JSON.stringify({
-            session_id: sessionId,
-            signed_nonce: base64Signature
-        })
-    });
-
-    const result = await response.json();
-
-    document.getElementById("attendanceStatus").innerText = result.message;
-    document.getElementById("attendanceStatus").style.color =
-    result.status === "success" ? "green" : "red";
-
+        const result = await response.json();
+        document.getElementById("attendanceStatus").innerText = result.message;
+        document.getElementById("attendanceStatus").style.color = result.status === "success" ? "green" : "red";
     } catch (err) {
         alert("Signing error: " + err);
     }
 }
-
-
 </script>
 </body>
 </html>
