@@ -2,10 +2,10 @@ import json
 import uuid
 from datetime import timedelta
 from unittest.mock import patch, MagicMock
-from django.test import TestCase, TransactionTestCase, Client, override_settings
-from django.urls import reverse
-from django.utils import timezone
-from django.db import IntegrityError
+from django.test import TestCase, TransactionTestCase, Client, override_settings #type: ignore
+from django.urls import reverse #type: ignore
+from django.utils import timezone #type: ignore
+from django.db import IntegrityError #type: ignore
 from core.models import (
     User,
     AttendanceSession,
