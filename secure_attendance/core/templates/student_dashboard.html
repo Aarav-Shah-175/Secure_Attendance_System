@@ -135,8 +135,23 @@
             font-weight: 600;
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
 </head>
 <body>
+    <!-- Liveness Challenge Overlay -->
+    <div id="livenessOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15, 23, 42, 0.92); z-index:9999; flex-direction:column; justify-content:center; align-items:center; color:white; font-family:sans-serif; padding:1rem; text-align:center;">
+        <div style="background:#1e293b; padding:1.5rem; border-radius:16px; max-width:380px; width:100%; border:1px solid #334155; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
+            <h3 style="margin:0 0 0.5rem; color:#38bdf8; font-size:1.25rem;">Liveness Challenge</h3>
+            <p id="challengePrompt" style="font-size:1.15rem; font-weight:700; color:#f8fafc; margin:0.5rem 0; min-height:2.4em; display:flex; align-items:center; justify-content:center;"></p>
+            <div style="position:relative; margin:10px auto; width:280px; height:210px; overflow:hidden; border-radius:12px; border:3px solid #0b5f78;">
+                <video id="livenessVideo" width="280" height="210" autoplay playsinline style="transform: scaleX(-1); object-fit:cover; width:100%; height:100%;"></video>
+            </div>
+            <p id="challengeStatus" style="font-size:0.95rem; font-weight:600; color:#cbd5e1; margin:0.5rem 0;">Initializing camera...</p>
+            <p id="challengeTimer" style="font-size:0.85rem; color:#94a3b8; margin:0.25rem 0 0;">Time remaining: 7s</p>
+        </div>
+    </div>
+
     <div id="cameraBox" style="display:none; margin-top:20px; text-align:center;">
         <video id="video" width="320" height="240" autoplay></video>
         <br><br>
@@ -288,15 +303,32 @@ async function submitAttendanceV2(sessionId) {
             body: JSON.stringify({ attempt_id: attemptId })
         });
 
-        // Step 3: Capture face frame for server liveness
-        statusEl.innerText = "Opening camera for identity verification...";
-        const frameData = await captureFrameFromCamera();
-        
-        statusEl.innerText = "Evaluating liveness & biometric match...";
+        // Step 3: Check Face Registration Status
+        statusEl.innerText = "Checking face registration status...";
+        const faceStatusRes = await fetch("/student/face-status/");
+        const faceStatusData = await faceStatusRes.json();
+        const isRegistered = faceStatusData.registered;
+
+        // Step 4: Get liveness challenge
+        statusEl.innerText = "Fetching liveness challenge...";
+        const livenessChalRes = await fetch(`/student/secure-v2/liveness-challenge/?attempt_id=${attemptId}`);
+        const challengeData = await livenessChalRes.json();
+        if (challengeData.status !== "success") {
+            statusEl.innerText = "Failed to get liveness challenge: " + (challengeData.message || challengeData.error);
+            statusEl.style.color = "red";
+            return;
+        }
+
+        // Step 5: Perform Face Verification / Registration + Interactive Liveness Challenge
+        statusEl.innerText = "Opening camera for face verification & liveness challenge...";
+        const livenessResult = await runLivenessChallenge(challengeData, isRegistered);
+
+        // Step 5: Verify liveness result nonce with server
+        statusEl.innerText = "Verifying liveness with server...";
         const liveRes = await fetch("/student/secure-v2/verify-liveness/", {
             method: "POST",
             headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
-            body: JSON.stringify({ attempt_id: attemptId, image: frameData })
+            body: JSON.stringify({ attempt_id: attemptId, nonce: livenessResult.nonce })
         });
         const liveData = await liveRes.json();
         if (liveData.status !== "success") {
@@ -305,7 +337,7 @@ async function submitAttendanceV2(sessionId) {
             return;
         }
 
-        // Step 4: Request WebAuthn challenge
+        // Step 6: Request WebAuthn challenge
         statusEl.innerText = "Requesting passkey assertion challenge...";
         const chalRes = await fetch("/student/secure-v2/request-challenge/", {
             method: "POST",
@@ -325,7 +357,7 @@ async function submitAttendanceV2(sessionId) {
             authOpts.allowCredentials.forEach(c => c.id = base64UrlToBuffer(c.id));
         }
 
-        // Step 5: WebAuthn passkey assertion prompt
+        // Step 7: WebAuthn passkey assertion prompt
         statusEl.innerText = "Authorize passkey prompt...";
         const assertion = await navigator.credentials.get({ publicKey: authOpts });
 
@@ -341,7 +373,7 @@ async function submitAttendanceV2(sessionId) {
             }
         };
 
-        // Step 6: Submit final assertion
+        // Step 8: Submit final assertion
         statusEl.innerText = "Verifying assertion and completing record...";
         const submitRes = await fetch("/student/secure-v2/submit/", {
             method: "POST",
@@ -354,30 +386,262 @@ async function submitAttendanceV2(sessionId) {
         statusEl.style.color = submitData.status === "success" ? "green" : "red";
 
     } catch (err) {
-        statusEl.innerText = "Error: " + err;
+        statusEl.innerText = "Error: " + err.message;
         statusEl.style.color = "red";
     }
 }
 
-async function captureFrameFromCamera() {
-    const video = document.getElementById("video");
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-    video.srcObject = stream;
-    document.getElementById("cameraBox").style.display = "block";
+// ---------- MEDIAPIPE LIVENESS CHALLENGE IMPLEMENTATION ----------
+const LEFT_EYE = [33, 160, 158, 133, 153, 144];
+const RIGHT_EYE = [362, 385, 387, 263, 373, 380];
 
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            const canvas = document.createElement("canvas");
-            canvas.width = video.videoWidth || 320;
-            canvas.height = video.videoHeight || 240;
-            const ctx = canvas.getContext("2d");
-            ctx.drawImage(video, 0, 0);
-            const imageData = canvas.toDataURL("image/jpeg");
+function euclideanDistance(p1, p2) {
+    return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+}
 
-            stream.getTracks().forEach(t => t.stop());
-            document.getElementById("cameraBox").style.display = "none";
-            resolve(imageData);
+function eyeAspectRatio(eyePoints) {
+    const A = euclideanDistance(eyePoints[1], eyePoints[5]);
+    const B = euclideanDistance(eyePoints[2], eyePoints[4]);
+    const C = euclideanDistance(eyePoints[0], eyePoints[3]);
+    if (C === 0) return 0;
+    return (A + B) / (2.0 * C);
+}
+
+function getEyePoints(landmarks, indices, w, h) {
+    return indices.map(idx => ({
+        x: landmarks[idx].x * w,
+        y: landmarks[idx].y * h
+    }));
+}
+
+function getHorizontalRatio(point, b1, b2) {
+    const left = Math.min(b1.x, b2.x);
+    const right = Math.max(b1.x, b2.x);
+    const distLeft = Math.abs(point.x - left);
+    const distRight = Math.abs(point.x - right);
+    if (distLeft + distRight === 0) return 0.5;
+    return distLeft / (distLeft + distRight);
+}
+
+async function runLivenessChallenge(challengeData, isRegistered = true) {
+    const overlay = document.getElementById("livenessOverlay");
+    const promptEl = document.getElementById("challengePrompt");
+    const statusEl = document.getElementById("challengeStatus");
+    const timerEl = document.getElementById("challengeTimer");
+    const videoElement = document.getElementById("livenessVideo");
+
+    promptEl.innerText = isRegistered ? "Step 1/2: Verifying Face Identity..." : "Step 1/2: Registering Face Profile...";
+    statusEl.innerText = "Starting camera...";
+    statusEl.style.color = "#cbd5e1";
+    overlay.style.display = "flex";
+
+    return new Promise(async (resolve, reject) => {
+        let stream = null;
+        let camera = null;
+        let faceMesh = null;
+        let timerInterval = null;
+        let successTime = null;
+        let closedFrames = 0;
+        let blinkCounter = 0;
+        let isDone = false;
+        let faceVerified = false;
+        let isCheckingFace = false;
+
+        const timeLimit = (challengeData.time_limit || 7) + 5; // Extra time for initial face verification
+        let remainingSeconds = timeLimit;
+
+        function cleanup() {
+            if (timerInterval) clearInterval(timerInterval);
+            if (camera) {
+                try { camera.stop(); } catch(e){}
+            }
+            if (stream) {
+                stream.getTracks().forEach(t => t.stop());
+            }
+            if (faceMesh) {
+                try { faceMesh.close(); } catch(e){}
+            }
+            overlay.style.display = "none";
+        }
+
+        timerEl.innerText = `Time remaining: ${remainingSeconds}s`;
+        timerInterval = setInterval(() => {
+            remainingSeconds--;
+            timerEl.innerText = `Time remaining: ${remainingSeconds}s`;
+            if (remainingSeconds <= 0 && !isDone) {
+                isDone = true;
+                cleanup();
+                reject(new Error("Liveness challenge timed out. Please try again."));
+            }
         }, 1000);
+
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: 320, height: 240, facingMode: "user" }
+            });
+            videoElement.srcObject = stream;
+        } catch (err) {
+            cleanup();
+            reject(new Error("Camera access denied: " + err.message));
+            return;
+        }
+
+        // Perform Face Registration or Face Verification first
+        setTimeout(async () => {
+            if (isDone) return;
+            isCheckingFace = true;
+            try {
+                const canvas = document.createElement("canvas");
+                canvas.width = videoElement.videoWidth || 320;
+                canvas.height = videoElement.videoHeight || 240;
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                const imageData = canvas.toDataURL("image/jpeg");
+
+                if (!isRegistered) {
+                    statusEl.innerText = "Saving initial face profile...";
+                    const regRes = await fetch("/student/register-face/", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
+                        body: JSON.stringify({ image: imageData })
+                    });
+                    const regData = await regRes.json();
+                    if (regData.status !== "success") {
+                        throw new Error(regData.message || "Face registration failed. Position face clearly.");
+                    }
+                    statusEl.innerText = "Face Profile Saved! Starting liveness challenge...";
+                } else {
+                    statusEl.innerText = "Checking face match against registered profile...";
+                    const verifyRes = await fetch("/student/face-verify/", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
+                        body: JSON.stringify({ image: imageData })
+                    });
+                    const verifyData = await verifyRes.json();
+                    if (verifyData.status !== "success") {
+                        throw new Error(verifyData.message || "Face match failed. Identity not recognized.");
+                    }
+                    statusEl.innerText = "Face Match Verified! Starting liveness challenge...";
+                }
+
+                faceVerified = true;
+                promptEl.innerText = "Step 2/2: " + challengeData.challenge_text;
+            } catch (err) {
+                isDone = true;
+                cleanup();
+                reject(err);
+            } finally {
+                isCheckingFace = false;
+            }
+        }, 1000);
+
+        faceMesh = new FaceMesh({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+        });
+
+        faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        faceMesh.onResults((results) => {
+            if (isDone || !faceVerified || isCheckingFace) return;
+
+            if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+                statusEl.innerText = "No face detected 👤";
+                statusEl.style.color = "#ef4444";
+                successTime = null;
+                closedFrames = 0;
+                return;
+            }
+
+            const face = results.multiFaceLandmarks[0];
+            const nose = face[1];
+            const cheekLeft = face[234];
+            const cheekRight = face[454];
+
+            const noseRatio = getHorizontalRatio(nose, cheekLeft, cheekRight);
+            const challengeType = challengeData.challenge_type;
+
+            let conditionMet = false;
+
+            if (challengeType === "left") {
+                conditionMet = noseRatio < 0.30;
+                statusEl.innerText = conditionMet ? "Hold posture... ⏱️" : "Turn your head LEFT 👈";
+            } else if (challengeType === "right") {
+                conditionMet = noseRatio > 0.65;
+                statusEl.innerText = conditionMet ? "Hold posture... ⏱️" : "Turn your head RIGHT 👉";
+            } else if (challengeType === "straight") {
+                conditionMet = (noseRatio >= 0.30 && noseRatio <= 0.65);
+                statusEl.innerText = conditionMet ? "Hold posture... ⏱️" : "Look straight at camera 👁️";
+            } else if (challengeType === "blink") {
+                const w = videoElement.videoWidth || 320;
+                const h = videoElement.videoHeight || 240;
+                const leftEye = getEyePoints(face, LEFT_EYE, w, h);
+                const rightEye = getEyePoints(face, RIGHT_EYE, w, h);
+                const ear = (eyeAspectRatio(leftEye) + eyeAspectRatio(rightEye)) / 2.0;
+                const isLookingStraight = (noseRatio > 0.35 && noseRatio < 0.65);
+
+                if (isLookingStraight) {
+                    if (ear < 0.22) {
+                        closedFrames++;
+                    } else {
+                        if (closedFrames >= 2) {
+                            blinkCounter++;
+                        }
+                        closedFrames = 0;
+                    }
+                } else {
+                    closedFrames = 0;
+                }
+
+                statusEl.innerText = `Blinks: ${blinkCounter} / 2`;
+                if (blinkCounter >= 2) {
+                    conditionMet = true;
+                }
+            }
+
+            statusEl.style.color = conditionMet ? "#22c55e" : "#cbd5e1";
+
+            if (challengeType !== "blink") {
+                if (conditionMet) {
+                    if (successTime === null) successTime = Date.now();
+                    if (Date.now() - successTime >= 1200) {
+                        isDone = true;
+                        statusEl.innerText = "Challenge Passed! ✅";
+                        setTimeout(() => {
+                            cleanup();
+                            resolve({ nonce: challengeData.nonce });
+                        }, 400);
+                    }
+                } else {
+                    successTime = null;
+                }
+            } else {
+                if (conditionMet) {
+                    isDone = true;
+                    statusEl.innerText = "Challenge Passed! ✅";
+                    setTimeout(() => {
+                        cleanup();
+                        resolve({ nonce: challengeData.nonce });
+                    }, 400);
+                }
+            }
+        });
+
+        camera = new Camera(videoElement, {
+            onFrame: async () => {
+                if (!isDone) {
+                    await faceMesh.send({ image: videoElement });
+                }
+            },
+            width: 320,
+            height: 240
+        });
+
+        camera.start();
     });
 }
 

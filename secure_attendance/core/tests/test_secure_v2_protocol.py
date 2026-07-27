@@ -86,6 +86,7 @@ class SecureV2ProtocolTests(TestCase):
         self.assertFalse(success_bad)
         self.assertIn("authorized classroom network", msg_bad)
 
+    @override_settings(LIVENESS_VERIFIER_TYPE="unconfigured")
     def test_unconfigured_liveness_verifier_fails_closed(self):
         success, attempt, _ = start_attendance_attempt(
             user=self.student,
@@ -107,6 +108,24 @@ class SecureV2ProtocolTests(TestCase):
         # Attempt status set to REJECTED
         attempt.refresh_from_db()
         self.assertEqual(attempt.status, AttemptStatus.REJECTED)
+
+    @override_settings(LIVENESS_VERIFIER_TYPE="mediapipe")
+    def test_mediapipe_liveness_verifier_nonce_flow(self):
+        success, attempt, _ = start_attendance_attempt(
+            user=self.student,
+            session_id=str(self.session.id),
+            client_ip="192.168.1.50"
+        )
+        self.assertTrue(success)
+
+        # Without nonce_verified payload, should fail
+        success_live, verification, _ = process_liveness_verification(
+            attempt_id=str(attempt.id),
+            user=self.student,
+            image_payload="invalid"
+        )
+        self.assertFalse(success_live)
+        self.assertEqual(verification.reason_code, "liveness_nonce_not_verified")
 
     def test_challenge_issuance_requires_liveness_success(self):
         success, attempt, _ = start_attendance_attempt(

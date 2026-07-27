@@ -11,9 +11,9 @@ from webauthn.helpers.structs import (
     PublicKeyCredentialRequestOptions,
     UserVerificationRequirement,
     AuthenticatorSelectionCriteria,
-    PublicKeyCredentialDescriptor,
-    PublicKeyCredentialType,
-)
+    PublicKeyCredentialDescriptor, #type: ignore
+    PublicKeyCredentialType, #type: ignore
+) 
 
 
 def get_rp_id() -> str:

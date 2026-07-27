@@ -160,3 +160,5 @@ CACHES = {
     }
 }
 
+LIVENESS_VERIFIER_TYPE = os.getenv("LIVENESS_VERIFIER_TYPE", "mediapipe")
+

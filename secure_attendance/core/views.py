@@ -34,6 +34,7 @@ from core.webauthn_service import (
     verify_passkey_registration
 )
 from core.audit_service import verify_v2_session_integrity, close_session_audit_root
+from core.liveness_challenge_service import issue_liveness_challenge, verify_liveness_nonce
 
 logger = logging.getLogger(__name__)
 
@@ -261,7 +262,17 @@ def export_csv(request, session_id):
 # ---------- DECOUPLED BIOMETRIC VIEWS ----------
 
 @login_required
-@rate_limit_request(key_prefix="register_face", limit=3, window_seconds=60)
+def check_face_status(request):
+    if request.user.role != "student":
+        return JsonResponse({"registered": False, "error": "Unauthorized"}, status=403)
+
+    embedding_path = f"embeddings/{request.user.id}.npy"
+    is_registered = os.path.exists(embedding_path)
+    return JsonResponse({"registered": is_registered, "user_id": str(request.user.id)})
+
+
+@login_required
+@rate_limit_request(key_prefix="register_face", limit=5, window_seconds=60)
 def register_face(request):
     if request.user.role != "student":
         return JsonResponse({"status": "fail", "message": "Unauthorized"}, status=403)
@@ -477,20 +488,54 @@ def presence_heartbeat_v2_view(request):
 
 
 @login_required
+@rate_limit_request(key_prefix="v2_liveness_challenge", limit=10, window_seconds=60)
+def liveness_challenge_view(request):
+    """GET — Issue a random liveness challenge + signed nonce for the given attempt."""
+    if request.user.role != "student":
+        return JsonResponse({"error": "Unauthorized"}, status=403)
+
+    attempt_id = request.GET.get("attempt_id")
+    if not attempt_id:
+        return JsonResponse({"error": "attempt_id required"}, status=400)
+
+    # Verify this attempt belongs to the requesting student
+    attempt = AttendanceAttempt.objects.filter(id=attempt_id, student=request.user).first()
+    if not attempt:
+        return JsonResponse({"error": "Attempt not found"}, status=404)
+
+    challenge_data = issue_liveness_challenge(attempt_id)
+    return JsonResponse({"status": "success", **challenge_data})
+
+
+@login_required
 @rate_limit_request(key_prefix="v2_verify_liveness", limit=5, window_seconds=60)
 def verify_liveness_v2_view(request):
+    """POST — Verify the HMAC nonce echoed back by the client after completing the challenge."""
     if request.user.role != "student":
         return JsonResponse({"error": "Unauthorized"}, status=403)
 
     try:
         data = json.loads(request.body.decode("utf-8"))
         attempt_id = data.get("attempt_id")
-        image_payload = data.get("image")
+        nonce = data.get("nonce", "")
 
+        # Validate the nonce (proves the client received a genuine server challenge)
+        nonce_ok, nonce_reason = verify_liveness_nonce(attempt_id, nonce)
+        if not nonce_ok:
+            logger.warning(
+                "Liveness nonce validation failed attempt=%s reason=%s user=%s",
+                attempt_id, nonce_reason, request.user.id
+            )
+            return JsonResponse(
+                {"status": "error", "message": f"Liveness check failed: {nonce_reason}"},
+                status=400
+            )
+
+        # Pass a sentinel image payload — nonce-based verifier does not need image bytes
         success, verification, message = process_liveness_verification(
             attempt_id=attempt_id,
             user=request.user,
-            image_payload=image_payload
+            image_payload="nonce_verified"
         )
 
         return JsonResponse({

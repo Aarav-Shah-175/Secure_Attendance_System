@@ -3,8 +3,8 @@ import base64
 import logging
 from dataclasses import dataclass
 from typing import Protocol, Optional
-from django.conf import settings
-from django.core.exceptions import ObjectDoesNotExist
+from django.conf import settings #type: ignore
+from django.core.exceptions import ObjectDoesNotExist #type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -41,14 +41,48 @@ class UnconfiguredLivenessVerifier:
         image_payload: str,
         challenge: str
     ) -> LivenessDecision:
-        # TODO: Replace with real FaceNet verifier once face recognition AI is integrated.
-        # Temporarily bypassed — always passes so the WebAuthn passkey step can be tested.
         return LivenessDecision(
-            passed=True,
+            passed=False,
             score=None,
-            reason="liveness_bypassed_for_testing",
+            reason="liveness_verifier_not_configured",
             verifier_version="unconfigured",
             verifier_name="UnconfiguredLivenessVerifier",
+        )
+
+
+class MediaPipeLivenessVerifier:
+    """
+    Verifier for client-side MediaPipe challenge-response liveness protocol.
+    The challenge (blink/left/right/straight) and HMAC nonce are verified server-side.
+    """
+
+    def __init__(self):
+        self.verifier_name = "MediaPipeLivenessVerifier"
+        self.verifier_version = "1.0.0"
+
+    def verify(
+        self,
+        *,
+        attempt_id: str,
+        student_id: str,
+        image_payload: str,
+        challenge: str
+    ) -> LivenessDecision:
+        if image_payload == "nonce_verified":
+            return LivenessDecision(
+                passed=True,
+                score=1.0,
+                reason="mediapipe_challenge_passed",
+                verifier_version=self.verifier_version,
+                verifier_name=self.verifier_name,
+            )
+
+        return LivenessDecision(
+            passed=False,
+            score=None,
+            reason="liveness_nonce_not_verified",
+            verifier_version=self.verifier_version,
+            verifier_name=self.verifier_name,
         )
 
 
@@ -119,12 +153,12 @@ class FaceNetLivenessVerifier:
             )
 
         try:
-            import cv2
+            import cv2 #type: ignore
             import numpy as np
-            import torch
-            from PIL import Image
-            from facenet_pytorch import MTCNN, InceptionResnetV1
-
+            import torch #type: ignore
+            from PIL import Image #type: ignore
+            from facenet_pytorch import MTCNN, InceptionResnetV1 #type: ignore
+ 
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
             np_img = np.frombuffer(image_bytes, np.uint8)
@@ -213,6 +247,8 @@ def get_liveness_verifier() -> LivenessVerifier:
     Defaults to UnconfiguredLivenessVerifier (failing closed) unless configured.
     """
     verifier_type = getattr(settings, "LIVENESS_VERIFIER_TYPE", "unconfigured")
+    if verifier_type == "mediapipe":
+        return MediaPipeLivenessVerifier()
     if verifier_type == "facenet":
         return FaceNetLivenessVerifier()
     return UnconfiguredLivenessVerifier()

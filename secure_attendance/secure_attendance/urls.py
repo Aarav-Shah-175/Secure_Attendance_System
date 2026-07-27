@@ -22,12 +22,14 @@ urlpatterns = [
     path('student/submit/', views.submit_attendance_view, name='submit_attendance'),
     path('student/face-verify/', views.face_verify, name='face_verify'),
     path('student/register-face/', views.register_face, name='register_face'),
+    path('student/face-status/', views.check_face_status, name='check_face_status'),
 
     # Secure Presence V2 endpoints
     path('student/passkey/register/options/', views.passkey_register_options_view, name='passkey_register_options'),
     path('student/passkey/register/verify/', views.passkey_register_verify_view, name='passkey_register_verify'),
     path('student/secure-v2/start-attempt/', views.start_attempt_v2_view, name='start_attempt_v2'),
     path('student/presence/heartbeat/', views.presence_heartbeat_v2_view, name='presence_heartbeat_v2'),
+    path('student/secure-v2/liveness-challenge/', views.liveness_challenge_view, name='liveness_challenge'),
     path('student/secure-v2/verify-liveness/', views.verify_liveness_v2_view, name='verify_liveness_v2'),
     path('student/secure-v2/request-challenge/', views.passkey_authenticate_options_view, name='passkey_authenticate_options'),
     path('student/secure-v2/submit/', views.submit_attendance_v2_view, name='submit_attendance_v2'),
