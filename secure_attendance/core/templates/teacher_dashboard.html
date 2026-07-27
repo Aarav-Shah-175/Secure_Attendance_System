@@ -48,7 +48,7 @@
             border-radius: 14px;
             box-shadow: var(--shadow);
             width: 100%;
-            max-width: 860px;
+            max-width: 900px;
             border: 1px solid var(--panel-border);
             border-top: 6px solid var(--primary);
         }
@@ -90,46 +90,38 @@
             background-color: var(--primary-hover);
         }
 
-        a[href="{% url 'start_session' %}"]:active {
-            transform: translateY(1px);
-        }
-
-        div[style*="border:1px solid black"] {
-            border: 1px solid var(--session-border) !important;
-            padding: 1rem 1.1rem !important;
-            margin: 0 0 0.55rem 0 !important;
-            border-radius: 12px !important;
-            background-color: var(--session-bg) !important;
-            border-left: 5px solid #8fb6d8 !important;
+        .session-card {
+            border: 1px solid var(--session-border);
+            padding: 1rem 1.1rem;
+            margin-bottom: 0.75rem;
+            border-radius: 12px;
+            background-color: var(--session-bg);
+            border-left: 5px solid #0b5f78;
             display: flex;
             flex-direction: column;
             gap: 0.4rem;
         }
 
-        div[style*="border:1px solid black"] p {
-            margin: 0;
-            font-size: 0.95rem;
-            color: var(--text-muted);
-        }
-
-        div[style*="border:1px solid black"] strong {
-            color: #1e293b;
-        }
-
-        a[href*="verify_integrity"] {
-            color: #0f172a;
-            font-weight: 600;
-            text-decoration: none;
-            margin-top: 0.3rem;
+        .badge {
             display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
         }
 
-        a[href*="verify_integrity"]:hover {
-            text-decoration: underline;
+        .badge-legacy {
+            background-color: #e2e8f0;
+            color: #475569;
         }
 
-        a[href*="export_csv"],
-        a[href*="export_xlsx"] {
+        .badge-v2 {
+            background-color: #dcfce7;
+            color: #166534;
+        }
+
+        .btn-export {
             display: inline-block;
             color: var(--neutral-btn-text);
             font-size: 0.85rem;
@@ -137,16 +129,9 @@
             border: 1px solid #cbd5e1;
             padding: 0.38rem 0.82rem;
             border-radius: 8px;
-            margin: 0 0.4rem 1.2rem 0;
+            margin: 0.3rem 0.4rem 0.8rem 0;
             background-color: var(--neutral-btn);
             font-weight: 600;
-            transition: background-color 0.2s ease, border-color 0.2s ease;
-        }
-
-        a[href*="export_csv"]:hover,
-        a[href*="export_xlsx"]:hover {
-            background-color: var(--neutral-btn-hover);
-            border-color: #94a3b8;
         }
 
         table {
@@ -157,38 +142,35 @@
             border: 1px solid #e2e8f0;
             border-radius: 12px;
             overflow: hidden;
-            display: table;
             background-color: #ffffff;
         }
 
         th, td {
             text-align: left;
             padding: 0.72rem 0.92rem;
-            border: none !important;
         }
 
         th {
             background-color: #f8fafc;
             color: #334155;
             font-weight: 600;
-            border-bottom: 1px solid #e2e8f0 !important;
+            border-bottom: 1px solid #e2e8f0;
         }
 
         td {
             color: var(--text-muted);
-            border-bottom: 1px solid #eef2f7 !important;
+            border-bottom: 1px solid #eef2f7;
         }
 
-        tr:last-child td {
-            border-bottom: none !important;
-        }
-
-        tr:hover td {
-            background-color: #f8fafc;
-        }
-
-        tr:nth-child(even) td {
-            background-color: #fbfdff;
+        .btn-danger {
+            background-color: var(--danger);
+            color: white;
+            border: none;
+            padding: 0.35rem 0.7rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
         }
 
         a[href="{% url 'logout' %}"] {
@@ -201,29 +183,6 @@
             border-top: 1px solid #e2e8f0;
             padding-top: 0.9rem;
         }
-
-        a[href="{% url 'logout' %}"]:hover {
-            color: var(--danger-hover);
-            text-decoration: underline;
-        }
-
-        p {
-            color: var(--text-muted);
-        }
-
-        br {
-            display: none;
-        }
-
-        @media (max-width: 640px) {
-            .dashboard-container {
-                padding: 1.3rem;
-            }
-
-            table, thead, tbody, th, td, tr {
-                font-size: 0.9rem;
-            }
-        }
     </style>
 </head>
 <body>
@@ -231,49 +190,87 @@
         <h2>Teacher Dashboard</h2>
 
         <a href="{% url 'start_session' %}">Start New Session</a>
-        <br><br>
 
-        <h3>Your Sessions</h3>
+        <h3>Your Active Sessions</h3>
 
         {% for session in sessions %}
-            <div style="border:1px solid black; padding:10px; margin:10px;">
-                <p><strong>Course:</strong> {{ session.course_code }}</p>
+            <div class="session-card">
+                <p>
+                    <strong>Course:</strong> {{ session.course_code }}
+                    <span class="badge {% if session.security_mode == 'secure_presence_v2' %}badge-v2{% else %}badge-legacy{% endif %}">
+                        {{ session.security_mode }}
+                    </span>
+                </p>
                 <p><strong>Started:</strong> {{ session.timestamp }}</p>
-                <p><strong>Active:</strong> {{ session.active }}</p>
+                <p><strong>Expiry:</strong> {{ session.expiry }}</p>
 
-                <a href="{% url 'verify_integrity' session.id %}">
-                    Verify Integrity
-                </a>
+                <div>
+                    <a href="{% url 'verify_integrity' session.id %}" style="font-weight:600; color:#0b5f78; text-decoration:none;">
+                        Verify Session Integrity
+                    </a>
+                </div>
             </div>
-            <a href="{% url 'export_csv' session.id %}">Export CSV</a>
-            <a href="{% url 'export_xlsx' session.id %}">Export xlsx</a>
+            <div>
+                <a href="{% url 'export_csv' session.id %}" class="btn-export">Export CSV</a>
+                <a href="{% url 'export_xlsx' session.id %}" class="btn-export">Export XLSX</a>
+            </div>
         {% empty %}
-            <p>No sessions yet.</p>
+            <p>No active sessions.</p>
         {% endfor %}
 
-        <h3>Marked Students</h3>
+        <h3>Enrolled Student Passkeys</h3>
 
-    <table border="1">
-        <tr>
-            <th>Student</th>
-            <th>Time</th>
-            <th>IP</th>
-        </tr>
-        {% for record in attendance_records %}
-        <tr>
-            <td>{{ record.student.email }}</td>
-            <td>{{ record.timestamp }}</td>
-            <td>{{ record.client_ip }}</td>
-        </tr>
-        {% empty %}
-        <tr>
-            <td colspan="3">No attendance yet.</td>
-        </tr>
-        {% endfor %}
-    </table>
+        <table>
+            <tr>
+                <th>Student</th>
+                <th>Credential ID</th>
+                <th>Enrolled At</th>
+                <th>Sign Counter</th>
+                <th>Action</th>
+            </tr>
+            {% for passkey in passkeys %}
+            <tr>
+                <td>{{ passkey.student.email }}</td>
+                <td><code>{{ passkey.credential_id|slice:":16" }}...</code></td>
+                <td>{{ passkey.created_at }}</td>
+                <td>{{ passkey.sign_counter }}</td>
+                <td>
+                    <form method="POST" action="{% url 'revoke_passkey' passkey.id %}" style="display:inline;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-danger" onclick="return confirm('Revoke this student passkey credential?')">
+                            Revoke
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5">No active student passkeys registered.</td>
+            </tr>
+            {% endfor %}
+        </table>
 
+        <h3>Marked Attendance Records</h3>
 
-        <br>
+        <table>
+            <tr>
+                <th>Student</th>
+                <th>Time</th>
+                <th>Client IP</th>
+            </tr>
+            {% for record in attendance_records %}
+            <tr>
+                <td>{{ record.student.email }}</td>
+                <td>{{ record.timestamp }}</td>
+                <td>{{ record.client_ip }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="3">No attendance records yet.</td>
+            </tr>
+            {% endfor %}
+        </table>
+
         <a href="{% url 'logout' %}">Logout</a>
     </div>
 </body>

@@ -62,8 +62,6 @@ MIDDLEWARE = [
     'core.middleware.HotspotRestrictionMiddleware',
 ]
 
-MIDDLEWARE.insert(0, 'core.middleware.HotspotRestrictionMiddleware')
-
 ROOT_URLCONF = 'secure_attendance.urls'
 
 TEMPLATES = [
@@ -136,9 +134,31 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'core.User'
+
+# ---------- SECURE PRESENCE PHASE 2 SETTINGS ----------
+SECURE_PRESENCE_V2_ENABLED = os.getenv("SECURE_PRESENCE_V2_ENABLED", "True") == "True"
+PRESENCE_HEARTBEAT_MAX_AGE_SECONDS = int(os.getenv("PRESENCE_HEARTBEAT_MAX_AGE_SECONDS", "15"))
+
+# rpId must be a valid domain name — IP addresses are rejected by WebAuthn spec.
+# sslip.io is a free public DNS service: 192-168-137-1.sslip.io resolves to 192.168.137.1.
+# Students' phones resolve this via DNS through the hotspot's shared internet connection.
+WEBAUTHN_RP_ID = os.getenv("WEBAUTHN_RP_ID", "192-168-137-1.sslip.io")
+WEBAUTHN_RP_NAME = os.getenv("WEBAUTHN_RP_NAME", "Secure Attendance System")
+WEBAUTHN_ORIGIN = os.getenv("WEBAUTHN_ORIGIN", "https://192-168-137-1.sslip.io:8000")
+
+# Cache backend for rate limiting & ephemeral challenges
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'secure-presence-cache',
+    }
+}
+
+LIVENESS_VERIFIER_TYPE = os.getenv("LIVENESS_VERIFIER_TYPE", "mediapipe")
 

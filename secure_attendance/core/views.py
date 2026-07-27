@@ -1,32 +1,226 @@
-from django.shortcuts import render, redirect # type: ignore
-from django.contrib.auth import authenticate, login, logout# type: ignore
-from django.contrib.auth.decorators import login_required# type: ignore
-from core.models import AttendanceSession, AttendanceRecord
-from core.session_service import create_attendance_session
-from core.attendance_service import submit_attendance
-from django.utils import timezone # type: ignore
-import json
-from django.http import JsonResponse# type: ignore
-from core.student_service import register_device
-import ipaddress
-import csv
-from django.http import HttpResponse#type: ignore
-from openpyxl import Workbook#type: ignore
-
-# face recognition imports
-
-import base64
-import cv2
-import numpy as np
-import torch
-import json
 import os
-from PIL import Image
-from facenet_pytorch import MTCNN, InceptionResnetV1
+import json
+import base64
+import csv
+import logging
+import ipaddress
+from django.shortcuts import render, redirect
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse, HttpResponse
+from django.utils import timezone
+from openpyxl import Workbook
+
+from core.models import (
+    AttendanceSession,
+    AttendanceRecord,
+    PasskeyCredential,
+    AttendanceAttempt,
+    SecurityMode
+)
+from core.session_service import create_attendance_session
+from core.attendance_service import submit_attendance, verify_session_integrity
+from core.student_service import register_device
+from core.rate_limit import rate_limit_request
+from core.presence_service import record_presence_heartbeat
+from core.secure_presence_v2_service import (
+    start_attendance_attempt,
+    process_liveness_verification,
+    issue_signing_challenge_v2,
+    submit_attendance_v2
+)
+from core.webauthn_service import (
+    generate_passkey_registration_options,
+    verify_passkey_registration
+)
+from core.audit_service import verify_v2_session_integrity, close_session_audit_root
+from core.liveness_challenge_service import issue_liveness_challenge, verify_liveness_nonce
+
+logger = logging.getLogger(__name__)
+
+
+# ---------- AUTH & DASHBOARD VIEWS ----------
+
+@rate_limit_request(key_prefix="login", limit=10, window_seconds=60)
+def login_view(request):
+    if request.method == "POST":
+        email = request.POST.get("email")
+        password = request.POST.get("password")
+
+        user = authenticate(request, email=email, password=password)
+        if user:
+            login(request, user)
+            if user.role == "professor":
+                return redirect("teacher_dashboard")
+            else:
+                return redirect("student_dashboard")
+
+    return render(request, "login.html")
+
+
+def logout_view(request):
+    logout(request)
+    return redirect("login")
+
+
+@login_required
+def teacher_dashboard(request):
+    if request.user.role != "professor":
+        return redirect("login")
+
+    sessions = AttendanceSession.objects.filter(professor=request.user, active=True)
+    attendance_records = AttendanceRecord.objects.filter(
+        session__in=sessions
+    ).select_related("student")
+
+    passkeys = PasskeyCredential.objects.select_related("student").filter(revoked=False)
+
+    return render(request, "teacher_dashboard.html", {
+        "sessions": sessions,
+        "attendance_records": attendance_records,
+        "passkeys": passkeys,
+    })
+
+
+@login_required
+def start_session(request):
+    if request.user.role != "professor":
+        return redirect("login")
+
+    if request.method == "POST":
+        course_code = request.POST.get("course_code")
+        security_mode = request.POST.get("security_mode", SecurityMode.LEGACY)
+
+        # request.get_host() now returns the sslip.io domain name, not an IP.
+        # Detect the actual hotspot gateway IP from the server's own network interfaces.
+        # Prefer the 192.168.137.x adapter (Windows Mobile Hotspot), else fall back
+        # to the request's server-side IP.
+        import socket
+        gateway_ip = None
+        try:
+            for info in socket.getaddrinfo(socket.gethostname(), None):
+                addr = info[4][0]
+                try:
+                    parsed = ipaddress.ip_address(addr)
+                    if not parsed.is_loopback and parsed.version == 4:
+                        # Prefer the hotspot subnet (192.168.137.x)
+                        if str(parsed).startswith("192.168.137."):
+                            gateway_ip = str(parsed)
+                            break
+                        elif gateway_ip is None:
+                            gateway_ip = str(parsed)
+                except ValueError:
+                    continue
+        except Exception:
+            pass
+
+        # Final fallback: read X-Forwarded-For or SERVER_NAME
+        if not gateway_ip:
+            gateway_ip = request.META.get("SERVER_ADDR") or request.META.get("REMOTE_ADDR", "127.0.0.1")
+
+        network = ipaddress.ip_network(gateway_ip + "/24", strict=False)
+        subnet_range = str(network)
+
+        create_attendance_session(
+            professor=request.user,
+            course_code=course_code,
+            gateway_ip=gateway_ip,
+            subnet_range=subnet_range,
+            security_mode=security_mode
+        )
+        return redirect("teacher_dashboard")
+
+    return render(request, "start_session.html")
+
+
+@login_required
+def student_dashboard(request):
+    if request.user.role != "student":
+        return redirect("login")
+
+    active_sessions = AttendanceSession.objects.filter(
+        active=True,
+        expiry__gt=timezone.now()
+    )
+
+    user_passkeys = PasskeyCredential.objects.filter(student=request.user, revoked=False)
+
+    return render(request, "student_dashboard.html", {
+        "sessions": active_sessions,
+        "passkeys": user_passkeys,
+    })
+
+
+# ---------- LEGACY FLOW VIEWS ----------
+
+@login_required
+def register_device_view(request):
+    if request.method == "GET":
+        return render(request, "student_register_device.html")
+
+    if request.method == "POST":
+        data = json.loads(request.body)
+        public_key = data.get("public_key")
+
+        register_device(
+            user=request.user,
+            public_key_pem=public_key,
+            device_info_string=request.META.get('HTTP_USER_AGENT', '')
+        )
+
+        return JsonResponse({"status": "success"})
+
+
+@login_required
+@rate_limit_request(key_prefix="submit_legacy", limit=5, window_seconds=60)
+def submit_attendance_view(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid method"}, status=400)
+
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    session_id = data.get("session_id")
+    signed_nonce = data.get("signed_nonce")
+    client_ip = request.META.get("REMOTE_ADDR")
+
+    success, message = submit_attendance(
+        user=request.user,
+        session_id=session_id,
+        signed_nonce=signed_nonce,
+        client_ip=client_ip
+    )
+
+    return JsonResponse({
+        "status": "success" if success else "error",
+        "message": message
+    })
+
+
+@login_required
+def verify_integrity_view(request, session_id):
+    if request.user.role != "professor":
+        return redirect("login")
+
+    session = AttendanceSession.objects.filter(id=session_id, professor=request.user).first()
+    if not session:
+        return redirect("teacher_dashboard")
+
+    if session.security_mode == SecurityMode.SECURE_PRESENCE_V2:
+        result = verify_v2_session_integrity(session_id)
+    else:
+        result = {"valid": verify_session_integrity(session_id)}
+
+    return render(request, "integrity_result.html", {
+        "result": result,
+        "session": session
+    })
+
 
 @login_required
 def export_xlsx(request, session_id):
-
     session = AttendanceSession.objects.get(id=session_id, professor=request.user)
     records = AttendanceRecord.objects.filter(session=session).select_related("student")
 
@@ -49,9 +243,7 @@ def export_xlsx(request, session_id):
 
 @login_required
 def export_csv(request, session_id):
-
     session = AttendanceSession.objects.get(id=session_id, professor=request.user)
-
     records = AttendanceRecord.objects.filter(session=session).select_related("student")
 
     response = HttpResponse(content_type='text/csv')
@@ -66,242 +258,358 @@ def export_csv(request, session_id):
 
     return response
 
-@login_required
-def register_device_view(request):
-    if request.method == "GET":
-        return render(request, "student_register_device.html")
 
-    if request.method == "POST":
-        data = json.loads(request.body)
-        public_key = data.get("public_key")
-
-        register_device(
-            user=request.user,
-            public_key_pem=public_key,
-            device_info_string=request.META.get('HTTP_USER_AGENT')
-        )
-
-        return JsonResponse({"status": "success"})
-
-def login_view(request):
-    if request.method == "POST":
-        email = request.POST.get("email")
-        password = request.POST.get("password")
-
-        user = authenticate(request, email=email, password=password)
-
-        if user:
-            login(request, user)
-            if user.role == "professor":
-                return redirect("teacher_dashboard")
-            else:
-                return redirect("student_dashboard")
-
-    return render(request, "login.html")
-
-
-def logout_view(request):
-    logout(request)
-    return redirect("login")
+# ---------- DECOUPLED BIOMETRIC VIEWS ----------
 
 @login_required
-def teacher_dashboard(request):
-    sessions = AttendanceSession.objects.filter(professor=request.user, active=True)
-
-    attendance_records = AttendanceRecord.objects.filter(
-        session__in=sessions
-    ).select_related("student")
-
-    return render(request, "teacher_dashboard.html", {
-        "sessions": sessions,
-        "attendance_records": attendance_records
-    })
-
-
-@login_required
-def start_session(request):
-    if request.user.role != "professor":
-        return redirect("login")
-
-    if request.method == "POST":
-        course_code = request.POST.get("course_code")
-
-        # Get the IP used to access server
-        host_ip = request.get_host().split(":")[0]
-
-        # Build subnet from that
-        network = ipaddress.ip_network(host_ip + "/24", strict=False)
-        subnet_range = str(network)
-
-        session = create_attendance_session(
-            professor=request.user,
-            course_code=course_code,
-            gateway_ip=host_ip,
-            subnet_range=subnet_range
-        )
-
-        return redirect("teacher_dashboard")
-
-    return render(request, "start_session.html")
-
-@login_required
-def student_dashboard(request):
+def check_face_status(request):
     if request.user.role != "student":
-        return redirect("login")
+        return JsonResponse({"registered": False, "error": "Unauthorized"}, status=403)
 
-    active_sessions = AttendanceSession.objects.filter(
-        active=True,
-        expiry__gt=timezone.now()
-    )
-
-    return render(request, "student_dashboard.html", {
-        "sessions": active_sessions
-    })
+    embedding_path = f"embeddings/{request.user.id}.npy"
+    is_registered = os.path.exists(embedding_path)
+    return JsonResponse({"registered": is_registered, "user_id": str(request.user.id)})
 
 
 @login_required
-def submit_attendance_view(request):
+@rate_limit_request(key_prefix="register_face", limit=5, window_seconds=60)
+def register_face(request):
+    if request.user.role != "student":
+        return JsonResponse({"status": "fail", "message": "Unauthorized"}, status=403)
 
     if request.method != "POST":
-        return JsonResponse({"error": "Invalid method"}, status=400)
+        return JsonResponse({"status": "fail", "message": "Invalid method"}, status=400)
 
     try:
-        data = json.loads(request.body.decode("utf-8"))
-    except Exception as e:
-        return JsonResponse({"error": "Invalid JSON"}, status=400)
-
-    session_id = data.get("session_id")
-    signed_nonce = data.get("signed_nonce")
-
-    client_ip = request.META.get("REMOTE_ADDR")
-
-    success, message = submit_attendance(
-        user=request.user,
-        session_id=session_id,
-        signed_nonce=signed_nonce,
-        client_ip=client_ip
-    )
-
-
-    return JsonResponse({
-        "status": "success" if success else "error",
-        "message": message
-    })
-
-from core.attendance_service import verify_session_integrity
-
-
-@login_required
-def verify_integrity_view(request, session_id):
-    if request.user.role != "professor":
-        return redirect("login")
-
-    result = verify_session_integrity(session_id)
-
-    return render(request, "integrity_result.html", {
-        "result": result
-    })
-
-
-
-# face recognition code
-
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-mtcnn = MTCNN(image_size = 160, margin = 0, device = device)
-resnet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
-
-
-
-@login_required
-def register_face(request):
-
-    if request.method == "POST":
-
         data = json.loads(request.body)
         image_data = data["image"]
-
         image_data = image_data.split(",")[1]
         image_bytes = base64.b64decode(image_data)
 
+        import cv2
+        import numpy as np
+        import torch
+        from PIL import Image
+        from facenet_pytorch import MTCNN, InceptionResnetV1
+
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
         np_img = np.frombuffer(image_bytes, np.uint8)
         frame = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
+
+        if frame is None:
+            return JsonResponse({"status": "fail", "message": "Invalid image payload"})
 
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img = Image.fromarray(frame_rgb)
 
+        mtcnn = MTCNN(image_size=160, margin=0, device=device)
         face = mtcnn(img)
 
         if face is None:
             return JsonResponse({"status": "fail", "message": "No face detected"})
 
-        face = face.unsqueeze(0).to(device)
+        resnet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
+        face_tensor = face.unsqueeze(0).to(device)
 
         with torch.no_grad():
-            embedding = resnet(face)
+            embedding = resnet(face_tensor)
 
-        embedding = embedding.cpu().numpy()
-
+        embedding_np = embedding.cpu().numpy()
         path = f"embeddings/{request.user.id}.npy"
         os.makedirs("embeddings", exist_ok=True)
 
-        np.save(path, embedding)
-
+        np.save(path, embedding_np)
         return JsonResponse({"status": "success"})
 
+    except Exception as e:
+        logger.error("Error during face registration: %s", str(e))
+        return JsonResponse({"status": "fail", "message": "Face registration error"}, status=500)
 
 
+@login_required
+@rate_limit_request(key_prefix="face_verify", limit=5, window_seconds=60)
 def face_verify(request):
+    if request.user.role != "student":
+        return JsonResponse({"status": "fail", "message": "Unauthorized"}, status=403)
 
-    if request.method == "POST":
+    if request.method != "POST":
+        return JsonResponse({"status": "fail", "message": "Invalid method"}, status=400)
 
+    try:
         data = json.loads(request.body)
-        image_data = data["image"]
-
-        # remove base64 header
-        image_data = image_data.split(",")[1]
-
+        image_data = data["image"].split(",")[1]
         image_bytes = base64.b64decode(image_data)
 
+        import cv2
+        import numpy as np
+        import torch
+        from PIL import Image
+        from facenet_pytorch import MTCNN, InceptionResnetV1
+
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
         np_img = np.frombuffer(image_bytes, np.uint8)
         frame = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
+
+        if frame is None:
+            return JsonResponse({"status": "fail", "message": "Invalid image payload"})
 
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img = Image.fromarray(frame_rgb)
 
+        mtcnn = MTCNN(image_size=160, margin=0, device=device)
         face = mtcnn(img)
 
         if face is None:
-            return JsonResponse({"status": "fail"})
+            return JsonResponse({"status": "fail", "message": "No face detected"})
 
-        face = face.unsqueeze(0).to(device)
+        resnet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
+        face_tensor = face.unsqueeze(0).to(device)
 
         with torch.no_grad():
-            embedding = resnet(face)
+            embedding = resnet(face_tensor)
 
-        embedding = embedding.cpu().numpy()
-
-        # get student id
-        student_id = request.user.id
-
-        embedding_path = f"embeddings/{student_id}.npy"
+        embedding_np = embedding.cpu().numpy()
+        embedding_path = f"embeddings/{request.user.id}.npy"
 
         if not os.path.exists(embedding_path):
-            return JsonResponse({
-                "status": "fail",
-                "message": "Face not registered"
-            })
+            return JsonResponse({"status": "fail", "message": "Face not registered"})
 
         stored_embedding = np.load(embedding_path)
-
         emb1 = torch.tensor(stored_embedding)
-        emb2 = torch.tensor(embedding)
+        emb2 = torch.tensor(embedding_np)
 
-        similarity = torch.nn.functional.cosine_similarity(emb1, emb2).item()
-
-        print("Cosine similarity:", similarity)
+        similarity = float(torch.nn.functional.cosine_similarity(emb1, emb2).item())
 
         if similarity > 0.7:
             return JsonResponse({"status": "success"})
         else:
-            return JsonResponse({"status": "fail"})
+            return JsonResponse({"status": "fail", "message": "Face match failed"})
+
+    except Exception as e:
+        logger.error("Error during face verification: %s", str(e))
+        return JsonResponse({"status": "fail", "message": "Verification error"}, status=500)
+
+
+# ---------- SECURE PRESENCE V2 ENDPOINTS ----------
+
+@login_required
+@rate_limit_request(key_prefix="passkey_reg_opt", limit=5, window_seconds=60)
+def passkey_register_options_view(request):
+    if request.user.role != "student":
+        return JsonResponse({"error": "Unauthorized"}, status=403)
+
+    try:
+        options_dict, challenge_b64url = generate_passkey_registration_options(request.user)
+        request.session["passkey_reg_challenge"] = challenge_b64url
+        return JsonResponse(options_dict)
+    except Exception as e:
+        logger.error("Passkey registration options error: %s", str(e))
+        return JsonResponse({"error": "Failed to generate passkey options"}, status=500)
+
+
+@login_required
+@rate_limit_request(key_prefix="passkey_reg_verify", limit=5, window_seconds=60)
+def passkey_register_verify_view(request):
+    if request.user.role != "student":
+        return JsonResponse({"error": "Unauthorized"}, status=403)
+
+    expected_challenge = request.session.get("passkey_reg_challenge")
+    if not expected_challenge:
+        return JsonResponse({"error": "No registration challenge found in session"}, status=400)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+        success, passkey, message = verify_passkey_registration(
+            user=request.user,
+            credential_payload=payload,
+            expected_challenge=expected_challenge
+        )
+        if success:
+            request.session.pop("passkey_reg_challenge", None)
+            return JsonResponse({"status": "success", "message": message})
+        else:
+            return JsonResponse({"status": "error", "message": message}, status=400)
+    except Exception as e:
+        logger.error("Passkey registration verification error: %s", str(e))
+        return JsonResponse({"error": "Passkey registration verification failed"}, status=400)
+
+
+@login_required
+@rate_limit_request(key_prefix="v2_start_attempt", limit=5, window_seconds=60)
+def start_attempt_v2_view(request):
+    if request.user.role != "student":
+        return JsonResponse({"error": "Unauthorized"}, status=403)
+
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+        session_id = data.get("session_id")
+        client_ip = request.META.get("REMOTE_ADDR")
+
+        success, attempt, message = start_attendance_attempt(
+            user=request.user,
+            session_id=session_id,
+            client_ip=client_ip
+        )
+        if success:
+            return JsonResponse({
+                "status": "success",
+                "attempt_id": str(attempt.id),
+                "message": message
+            })
+        else:
+            return JsonResponse({"status": "error", "message": message}, status=400)
+    except Exception as e:
+        logger.error("Error starting V2 attempt: %s", str(e))
+        return JsonResponse({"error": "Failed to start attendance attempt"}, status=400)
+
+
+@login_required
+def presence_heartbeat_v2_view(request):
+    if request.user.role != "student":
+        return JsonResponse({"error": "Unauthorized"}, status=403)
+
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+        attempt_id = data.get("attempt_id")
+
+        attempt = AttendanceAttempt.objects.filter(id=attempt_id, student=request.user).first()
+        if not attempt:
+            return JsonResponse({"error": "Attempt not found"}, status=404)
+
+        client_ip = request.META.get("REMOTE_ADDR")
+        heartbeat = record_presence_heartbeat(attempt, request.user, client_ip)
+
+        return JsonResponse({
+            "status": "success" if heartbeat.valid else "error",
+            "valid": heartbeat.valid
+        })
+    except Exception as e:
+        return JsonResponse({"error": "Heartbeat processing error"}, status=400)
+
+
+@login_required
+@rate_limit_request(key_prefix="v2_liveness_challenge", limit=10, window_seconds=60)
+def liveness_challenge_view(request):
+    """GET — Issue a random liveness challenge + signed nonce for the given attempt."""
+    if request.user.role != "student":
+        return JsonResponse({"error": "Unauthorized"}, status=403)
+
+    attempt_id = request.GET.get("attempt_id")
+    if not attempt_id:
+        return JsonResponse({"error": "attempt_id required"}, status=400)
+
+    # Verify this attempt belongs to the requesting student
+    attempt = AttendanceAttempt.objects.filter(id=attempt_id, student=request.user).first()
+    if not attempt:
+        return JsonResponse({"error": "Attempt not found"}, status=404)
+
+    challenge_data = issue_liveness_challenge(attempt_id)
+    return JsonResponse({"status": "success", **challenge_data})
+
+
+@login_required
+@rate_limit_request(key_prefix="v2_verify_liveness", limit=5, window_seconds=60)
+def verify_liveness_v2_view(request):
+    """POST — Verify the HMAC nonce echoed back by the client after completing the challenge."""
+    if request.user.role != "student":
+        return JsonResponse({"error": "Unauthorized"}, status=403)
+
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+        attempt_id = data.get("attempt_id")
+        nonce = data.get("nonce", "")
+
+        # Validate the nonce (proves the client received a genuine server challenge)
+        nonce_ok, nonce_reason = verify_liveness_nonce(attempt_id, nonce)
+        if not nonce_ok:
+            logger.warning(
+                "Liveness nonce validation failed attempt=%s reason=%s user=%s",
+                attempt_id, nonce_reason, request.user.id
+            )
+            return JsonResponse(
+                {"status": "error", "message": f"Liveness check failed: {nonce_reason}"},
+                status=400
+            )
+
+        # Pass a sentinel image payload — nonce-based verifier does not need image bytes
+        success, verification, message = process_liveness_verification(
+            attempt_id=attempt_id,
+            user=request.user,
+            image_payload="nonce_verified"
+        )
+
+        return JsonResponse({
+            "status": "success" if success else "error",
+            "message": message
+        }, status=200 if success else 400)
+    except Exception as e:
+        logger.error("Liveness verification endpoint error: %s", str(e))
+        return JsonResponse({"error": "Liveness verification processing error"}, status=500)
+
+
+@login_required
+@rate_limit_request(key_prefix="v2_request_challenge", limit=5, window_seconds=60)
+def passkey_authenticate_options_view(request):
+    if request.user.role != "student":
+        return JsonResponse({"error": "Unauthorized"}, status=403)
+
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+        attempt_id = data.get("attempt_id")
+
+        success, options_dict, message = issue_signing_challenge_v2(
+            attempt_id=attempt_id,
+            user=request.user
+        )
+
+        if success:
+            return JsonResponse({
+                "status": "success",
+                "options": options_dict
+            })
+        else:
+            return JsonResponse({"status": "error", "message": message}, status=400)
+    except Exception as e:
+        logger.error("Passkey auth options error: %s", str(e))
+        return JsonResponse({"error": "Challenge generation error"}, status=400)
+
+
+@login_required
+@rate_limit_request(key_prefix="v2_submit", limit=3, window_seconds=60)
+def submit_attendance_v2_view(request):
+    if request.user.role != "student":
+        return JsonResponse({"error": "Unauthorized"}, status=403)
+
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+        attempt_id = data.get("attempt_id")
+        credential_payload = data.get("credential")
+        client_ip = request.META.get("REMOTE_ADDR")
+
+        success, message = submit_attendance_v2(
+            user=request.user,
+            attempt_id=attempt_id,
+            credential_payload=credential_payload,
+            client_ip=client_ip
+        )
+
+        return JsonResponse({
+            "status": "success" if success else "error",
+            "message": message
+        }, status=200 if success else 400)
+    except Exception as e:
+        logger.error("Secure V2 submit error: %s", str(e))
+        return JsonResponse({"error": "Submission processing error"}, status=500)
+
+
+@login_required
+def revoke_passkey_v2_view(request, passkey_id):
+    if request.user.role != "professor":
+        return JsonResponse({"error": "Unauthorized"}, status=403)
+
+    passkey = PasskeyCredential.objects.filter(id=passkey_id).first()
+    if passkey:
+        passkey.revoked = True
+        passkey.save(update_fields=['revoked'])
+
+    return redirect("teacher_dashboard")
