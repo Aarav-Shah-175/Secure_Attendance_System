@@ -189,37 +189,44 @@
         <h2>Student Dashboard</h2>
         <p class="subheading">View active classes and submit attendance securely</p>
 
-        <button onclick="registerPasskey()" class="btn-passkey">
-            Enrol WebAuthn Passkey (Secure V2)
-        </button>
+        <div class="registration-status-box" style="margin-bottom: 1.2rem;">
+            {% if is_fully_registered %}
+            <div
+                style="background-color: #dcfce7; color: #166534; border: 1px solid #bbf7d0; padding: 0.85rem; border-radius: 10px; font-weight: 700; text-align: center; font-size: 0.95rem;">
+                ✓ Biometric Passkey & Face ID already Enrolled
+            </div>
+            {% else %}
+            {% if not has_passkey %}
+            <button onclick="registerPasskey()" class="btn-passkey" style="margin-bottom: 0.5rem;">
+                Register Biometric Passkey
+            </button>
+            {% endif %}
 
-        <!-- <a href="/student/register-device/" class="button-link">Register Legacy Device</a> -->
-        <button onclick="startFaceRegistration()">Register Face Embedding</button>
+            {% if not has_face %}
+            <button onclick="startFaceRegistration()" style="background-color: #0b5f78; margin-bottom: 0.5rem;">
+                Register Face ID
+            </button>
+            {% endif %}
+            {% endif %}
+        </div>
 
         <h3>Active Sessions</h3>
 
         {% for session in sessions %}
         <div class="session-card">
-            <p>
-                <strong>Course Code:</strong> {{ session.course_code }}
-                <!-- <span class="badge">
-                    secure_presence_v2
-                </span> -->
+            <p style="margin:0 0 0.4rem 0;">
+                <strong>Course Code:</strong> {{ session.course_code|upper }}
             </p>
-            <p><strong>Expiry:</strong> {{ session.expiry }}</p>
+            <p style="margin:0 0 0.8rem 0; color:var(--text-muted); font-size:0.88rem;">
+                <strong>Expires:</strong> {{ session.expiry }}
+            </p>
 
-            {% if session.security_mode == 'secure_presence_v2' %}
             <button onclick="submitAttendanceV2('{{ session.id }}')">
-                Submit Attendance
+                Mark Attendance
             </button>
-            {% else %}
-            <button onclick="startFaceVerification('{{ session.id }}', '{{ session.network_nonce }}')">
-                Submit Legacy Attendance
-            </button>
-            {% endif %}
         </div>
         {% empty %}
-        <p>No active sessions.</p>
+        <p style="color:var(--text-muted); text-align:center; padding:1rem;">No active sessions currently open.</p>
         {% endfor %}
 
         <p id="attendanceStatus"></p>
@@ -227,10 +234,6 @@
     </div>
 
     <script>
-        let registerMode = false;
-        let currentSession = null;
-        let currentNonce = null;
-
         // ---------- WEBAUTHN UTILITIES ----------
         function bufferToBase64Url(buffer) {
             const bytes = new Uint8Array(buffer);
@@ -297,15 +300,64 @@
 
                 const result = await verifyRes.json();
                 alert(result.message || "Passkey registration completed.");
+                window.location.reload();
             } catch (err) {
                 alert("Passkey error: " + err);
             }
         }
 
-        // ---------- SECURE V2 ATTENDANCE FLOW ----------
+        // ---------- FACE ID REGISTRATION ----------
+        async function startFaceRegistration() {
+            const statusEl = document.getElementById("attendanceStatus");
+            statusEl.innerText = "Opening camera for Face ID registration...";
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: "user" } });
+                const video = document.getElementById("video");
+                video.srcObject = stream;
+                document.getElementById("cameraBox").style.display = "block";
+            } catch (err) {
+                alert("Camera access denied: " + err.message);
+            }
+        }
+
+        async function captureFace() {
+            const statusEl = document.getElementById("attendanceStatus");
+            statusEl.innerText = "Capturing & saving Face ID profile...";
+            try {
+                const video = document.getElementById("video");
+                const canvas = document.createElement("canvas");
+                canvas.width = video.videoWidth || 320;
+                canvas.height = video.videoHeight || 240;
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(video, 0, 0);
+                const imageData = canvas.toDataURL("image/jpeg");
+
+                const stream = video.srcObject;
+                if (stream) stream.getTracks().forEach(track => track.stop());
+                document.getElementById("cameraBox").style.display = "none";
+
+                const response = await fetch("/student/register-face/", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
+                    body: JSON.stringify({ image: imageData })
+                });
+                const result = await response.json();
+                alert(result.status === "success" ? "Face ID Registered Successfully!" : ("Face Registration Failed: " + result.message));
+                if (result.status === "success") {
+                    window.location.reload();
+                }
+            } catch (err) {
+                alert("Capture error: " + err);
+            }
+        }
+
+        // ---------- SECURE ATTENDANCE FLOW & CONTINUOUS HEARTBEAT ----------
         async function submitAttendanceV2(sessionId) {
             const statusEl = document.getElementById("attendanceStatus");
             statusEl.innerText = "Initializing attempt...";
+            statusEl.style.color = "#0b5f78";
+
+            let heartbeatInterval = null;
 
             try {
                 // Step 1: Start attempt
@@ -323,20 +375,28 @@
 
                 const attemptId = startData.attempt_id;
 
-                // Step 2: Send presence heartbeat
-                await fetch("/student/presence/heartbeat/", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
-                    body: JSON.stringify({ attempt_id: attemptId })
-                });
+                // Continuous Presence Heartbeat polling helper (prevents timeouts during camera / WebAuthn prompts)
+                const sendHeartbeat = async () => {
+                    try {
+                        await fetch("/student/presence/heartbeat/", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
+                            body: JSON.stringify({ attempt_id: attemptId })
+                        });
+                    } catch (e) { }
+                };
 
-                // Step 3: Check Face Registration Status
+                // Send initial heartbeat and poll every 4 seconds
+                await sendHeartbeat();
+                heartbeatInterval = setInterval(sendHeartbeat, 4000);
+
+                // Step 2: Check Face Registration Status
                 statusEl.innerText = "Checking face registration status...";
                 const faceStatusRes = await fetch("/student/face-status/");
                 const faceStatusData = await faceStatusRes.json();
                 const isRegistered = faceStatusData.registered;
 
-                // Step 4: Get liveness challenge
+                // Step 3: Get liveness challenge
                 statusEl.innerText = "Fetching liveness challenge...";
                 const livenessChalRes = await fetch(`/student/secure-v2/liveness-challenge/?attempt_id=${attemptId}`);
                 const challengeData = await livenessChalRes.json();
@@ -346,7 +406,7 @@
                     return;
                 }
 
-                // Step 5: Perform Face Verification / Registration + Interactive Liveness Challenge
+                // Step 4: Perform Face Verification / Registration + Interactive Liveness Challenge
                 statusEl.innerText = "Opening camera for face verification & liveness challenge...";
                 const livenessResult = await runLivenessChallenge(challengeData, isRegistered);
 
@@ -409,12 +469,16 @@
                 });
                 const submitData = await submitRes.json();
 
-                statusEl.innerText = submitData.message || (submitData.status === "success" ? "Attendance Recorded!" : "Submission Failed");
-                statusEl.style.color = submitData.status === "success" ? "green" : "red";
+                statusEl.innerText = submitData.message || (submitData.status === "success" ? "Attendance Recorded Successfully! ✅" : "Submission Failed");
+                statusEl.style.color = submitData.status === "success" ? "#166534" : "red";
 
             } catch (err) {
                 statusEl.innerText = "Error: " + err.message;
                 statusEl.style.color = "red";
+            } finally {
+                if (heartbeatInterval) {
+                    clearInterval(heartbeatInterval);
+                }
             }
         }
 
@@ -474,7 +538,7 @@
                 let faceVerified = false;
                 let isCheckingFace = false;
 
-                const timeLimit = (challengeData.time_limit || 7) + 5; // Extra time for initial face verification
+                const timeLimit = (challengeData.time_limit || 7) + 5;
                 let remainingSeconds = timeLimit;
 
                 function cleanup() {
@@ -513,7 +577,6 @@
                     return;
                 }
 
-                // Perform Face Registration or Face Verification first
                 setTimeout(async () => {
                     if (isDone) return;
                     isCheckingFace = true;
@@ -670,115 +733,6 @@
 
                 camera.start();
             });
-        }
-
-        // ---------- LEGACY FLOW FUNCTIONS ----------
-        async function startFaceRegistration() {
-            registerMode = true;
-            const video = document.getElementById("video");
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                video.srcObject = stream;
-                document.getElementById("cameraBox").style.display = "block";
-            } catch (err) {
-                alert("Camera access denied");
-            }
-        }
-
-        async function startFaceVerification(sessionId, nonce) {
-            currentSession = sessionId;
-            currentNonce = nonce;
-            const video = document.getElementById("video");
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                video.srcObject = stream;
-                document.getElementById("cameraBox").style.display = "block";
-            } catch (err) {
-                alert("Camera access denied");
-            }
-        }
-
-        async function captureFace() {
-            try {
-                const video = document.getElementById("video");
-                const canvas = document.createElement("canvas");
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                const ctx = canvas.getContext("2d");
-                ctx.drawImage(video, 0, 0);
-                const imageData = canvas.toDataURL("image/jpeg");
-
-                const stream = video.srcObject;
-                if (stream) stream.getTracks().forEach(track => track.stop());
-                document.getElementById("cameraBox").style.display = "none";
-
-                if (registerMode) {
-                    const response = await fetch("/student/register-face/", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
-                        body: JSON.stringify({ image: imageData })
-                    });
-                    const result = await response.json();
-                    alert(result.status === "success" ? "Face Registered Successfully" : "Face Registration Failed");
-                    registerMode = false;
-                    return;
-                }
-
-                const response = await fetch("/student/face-verify/", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
-                    body: JSON.stringify({ image: imageData })
-                });
-                const result = await response.json();
-
-                if (result.status === "success") {
-                    signNonce(currentSession, currentNonce);
-                } else {
-                    alert("Face Verification Failed");
-                }
-            } catch (err) {
-                alert("Capture error: " + err);
-            }
-        }
-
-        async function signNonce(sessionId, nonce) {
-            const privateBase64 = localStorage.getItem("device_private_key");
-            if (!privateBase64) {
-                alert("Private key not found.");
-                return;
-            }
-
-            try {
-                const binary = Uint8Array.from(atob(privateBase64), c => c.charCodeAt(0));
-                const privateKey = await crypto.subtle.importKey(
-                    "pkcs8", binary.buffer, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]
-                );
-
-                const encoder = new TextEncoder();
-                const data = encoder.encode(nonce);
-                const signature = await crypto.subtle.sign(
-                    { name: "ECDSA", hash: { name: "SHA-256" } }, privateKey, data
-                );
-
-                let binarySig = "";
-                const sigBytes = new Uint8Array(signature);
-                for (let i = 0; i < sigBytes.byteLength; i++) {
-                    binarySig += String.fromCharCode(sigBytes[i]);
-                }
-                const base64Signature = btoa(binarySig);
-
-                const response = await fetch("/student/submit/", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
-                    body: JSON.stringify({ session_id: sessionId, signed_nonce: base64Signature })
-                });
-
-                const result = await response.json();
-                document.getElementById("attendanceStatus").innerText = result.message;
-                document.getElementById("attendanceStatus").style.color = result.status === "success" ? "green" : "red";
-            } catch (err) {
-                alert("Signing error: " + err);
-            }
         }
     </script>
 </body>

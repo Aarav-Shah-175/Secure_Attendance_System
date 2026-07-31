@@ -19,8 +19,62 @@ from core.models import (
     SecurityMode
 )
 from core.session_service import create_attendance_session
-from core.attendance_service import submit_attendance, verify_session_integrity
-from core.student_service import register_device
+from core.attendance_service import verify_session_integrity
+from core.student_service import (
+    get_face_models,
+    register_student_face_embedding,
+    verify_student_face,
+    revoke_student_face
+)
+from core.rate_limit import rate_limit_request
+from core.presence_service import record_presence_heartbeat
+from core.secure_presence_v2_service import (
+    start_attendance_attempt,
+    process_liveness_verification,
+    issue_signing_challenge_v2,
+    submit_attendance_v2
+)
+from core.webauthn_service import (
+    generate_passkey_registration_options,
+    verify_passkey_registration
+)
+from core.audit_service import verify_v2_session_integrity, close_session_audit_root
+from core.liveness_challenge_service import issue_liveness_challenge, verify_liveness_nonce
+
+logger = logging.getLogger(__name__)
+
+
+import os
+import json
+import base64
+import csv
+import logging
+import ipaddress
+from datetime import timedelta
+from django.shortcuts import render, redirect
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse, HttpResponse
+from django.utils import timezone
+from openpyxl import Workbook
+
+from core.models import (
+    User,
+    AttendanceSession,
+    AttendanceRecord,
+    PasskeyCredential,
+    AttendanceAttempt,
+    SecurityMode,
+    StudentProfile
+)
+from core.session_service import create_attendance_session
+from core.attendance_service import verify_session_integrity
+from core.student_service import (
+    get_face_models,
+    register_student_face_embedding,
+    verify_student_face,
+    revoke_student_face
+)
 from core.rate_limit import rate_limit_request
 from core.presence_service import record_presence_heartbeat
 from core.secure_presence_v2_service import (
@@ -70,17 +124,46 @@ def teacher_dashboard(request):
     if request.user.role != "professor":
         return redirect("login")
 
-    sessions = AttendanceSession.objects.filter(professor=request.user, active=True)
-    attendance_records = AttendanceRecord.objects.filter(
-        session__in=sessions
-    ).select_related("student")
+    # Fetch 30-day session history for professor
+    thirty_days_ago = timezone.now() - timedelta(days=30)
+    search_query = request.GET.get("q", "").strip()
 
-    passkeys = PasskeyCredential.objects.select_related("student").filter(revoked=False)
+    sessions = AttendanceSession.objects.filter(
+        professor=request.user,
+        timestamp__gte=thirty_days_ago
+    )
+    if search_query:
+        sessions = sessions.filter(course_code__icontains=search_query)
+
+    sessions = sessions.order_by("-timestamp")
+
+    session_history = []
+    now = timezone.now()
+    for s in sessions:
+        records = AttendanceRecord.objects.filter(session=s).select_related("student").order_by("-timestamp")
+        session_history.append({
+            "session": s,
+            "records": records,
+            "record_count": records.count(),
+            "is_active": s.active and s.expiry > now
+        })
+
+    # Student Credential Management for Admin / Professor
+    students = User.objects.filter(role="student").order_by("email")
+    student_credentials = []
+    for st in students:
+        passkey = PasskeyCredential.objects.filter(student=st, revoked=False).first()
+        has_face = os.path.exists(f"embeddings/{st.id}.npy") or StudentProfile.objects.filter(user=st).exists()
+        student_credentials.append({
+            "student": st,
+            "passkey": passkey,
+            "has_face": has_face,
+        })
 
     return render(request, "teacher_dashboard.html", {
-        "sessions": sessions,
-        "attendance_records": attendance_records,
-        "passkeys": passkeys,
+        "session_history": session_history,
+        "student_credentials": student_credentials,
+        "search_query": search_query,
     })
 
 
@@ -91,12 +174,8 @@ def start_session(request):
 
     if request.method == "POST":
         course_code = request.POST.get("course_code")
-        security_mode = request.POST.get("security_mode", SecurityMode.LEGACY)
+        security_mode = SecurityMode.SECURE_PRESENCE_V2
 
-        # request.get_host() now returns the sslip.io domain name, not an IP.
-        # Detect the actual hotspot gateway IP from the server's own network interfaces.
-        # Prefer the 192.168.137.x adapter (Windows Mobile Hotspot), else fall back
-        # to the request's server-side IP.
         import socket
         gateway_ip = None
         try:
@@ -105,7 +184,6 @@ def start_session(request):
                 try:
                     parsed = ipaddress.ip_address(addr)
                     if not parsed.is_loopback and parsed.version == 4:
-                        # Prefer the hotspot subnet (192.168.137.x)
                         if str(parsed).startswith("192.168.137."):
                             gateway_ip = str(parsed)
                             break
@@ -116,7 +194,6 @@ def start_session(request):
         except Exception:
             pass
 
-        # Final fallback: read X-Forwarded-For or SERVER_NAME
         if not gateway_ip:
             gateway_ip = request.META.get("SERVER_ADDR") or request.META.get("REMOTE_ADDR", "127.0.0.1")
 
@@ -145,11 +222,15 @@ def student_dashboard(request):
         expiry__gt=timezone.now()
     )
 
-    user_passkeys = PasskeyCredential.objects.filter(student=request.user, revoked=False)
+    has_passkey = PasskeyCredential.objects.filter(student=request.user, revoked=False).exists()
+    has_face = os.path.exists(f"embeddings/{request.user.id}.npy") or StudentProfile.objects.filter(user=request.user).exists()
+    is_fully_registered = has_passkey and has_face
 
     return render(request, "student_dashboard.html", {
         "sessions": active_sessions,
-        "passkeys": user_passkeys,
+        "has_passkey": has_passkey,
+        "has_face": has_face,
+        "is_fully_registered": is_fully_registered,
     })
 
 
@@ -261,7 +342,7 @@ def export_csv(request, session_id):
     return response
 
 
-# ---------- DECOUPLED BIOMETRIC VIEWS ----------
+# ---------- OPTIMIZED DECOUPLED BIOMETRIC VIEWS ----------
 
 @login_required
 def check_face_status(request):
@@ -269,7 +350,7 @@ def check_face_status(request):
         return JsonResponse({"registered": False, "error": "Unauthorized"}, status=403)
 
     embedding_path = f"embeddings/{request.user.id}.npy"
-    is_registered = os.path.exists(embedding_path)
+    is_registered = os.path.exists(embedding_path) or StudentProfile.objects.filter(user=request.user).exists()
     return JsonResponse({"registered": is_registered, "user_id": str(request.user.id)})
 
 
@@ -284,18 +365,15 @@ def register_face(request):
 
     try:
         data = json.loads(request.body)
-        image_data = data["image"]
-        image_data = image_data.split(",")[1]
+        image_data = data["image"].split(",")[1]
         image_bytes = base64.b64decode(image_data)
 
         import cv2
         import numpy as np
-        import torch
-        # pyrefly: ignore [missing-import]
         from PIL import Image
-        from facenet_pytorch import MTCNN, InceptionResnetV1
 
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        mtcnn, resnet = get_face_models()
+
         np_img = np.frombuffer(image_bytes, np.uint8)
         frame = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
 
@@ -305,24 +383,21 @@ def register_face(request):
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img = Image.fromarray(frame_rgb)
 
-        mtcnn = MTCNN(image_size=160, margin=0, device=device)
         face = mtcnn(img)
-
         if face is None:
-            return JsonResponse({"status": "fail", "message": "No face detected"})
+            return JsonResponse({"status": "fail", "message": "No face detected in frame. Align face clearly."})
 
-        resnet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
+        import torch
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
         face_tensor = face.unsqueeze(0).to(device)
 
         with torch.no_grad():
             embedding = resnet(face_tensor)
 
         embedding_np = embedding.cpu().numpy()
-        path = f"embeddings/{request.user.id}.npy"
-        os.makedirs("embeddings", exist_ok=True)
+        success, msg = register_student_face_embedding(request.user, embedding_np)
 
-        np.save(path, embedding_np)
-        return JsonResponse({"status": "success"})
+        return JsonResponse({"status": "success" if success else "fail", "message": msg})
 
     except Exception as e:
         logger.error("Error during face registration: %s", str(e))
@@ -345,11 +420,10 @@ def face_verify(request):
 
         import cv2
         import numpy as np
-        import torch
         from PIL import Image
-        from facenet_pytorch import MTCNN, InceptionResnetV1
 
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        mtcnn, resnet = get_face_models()
+
         np_img = np.frombuffer(image_bytes, np.uint8)
         frame = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
 
@@ -359,38 +433,40 @@ def face_verify(request):
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img = Image.fromarray(frame_rgb)
 
-        mtcnn = MTCNN(image_size=160, margin=0, device=device)
         face = mtcnn(img)
-
         if face is None:
             return JsonResponse({"status": "fail", "message": "No face detected"})
 
-        resnet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
+        import torch
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
         face_tensor = face.unsqueeze(0).to(device)
 
         with torch.no_grad():
             embedding = resnet(face_tensor)
 
         embedding_np = embedding.cpu().numpy()
-        embedding_path = f"embeddings/{request.user.id}.npy"
+        match_ok, score, msg = verify_student_face(str(request.user.id), embedding_np, threshold=0.7)
 
-        if not os.path.exists(embedding_path):
-            return JsonResponse({"status": "fail", "message": "Face not registered"})
-
-        stored_embedding = np.load(embedding_path)
-        emb1 = torch.tensor(stored_embedding)
-        emb2 = torch.tensor(embedding_np)
-
-        similarity = float(torch.nn.functional.cosine_similarity(emb1, emb2).item())
-
-        if similarity > 0.7:
-            return JsonResponse({"status": "success"})
+        if match_ok:
+            return JsonResponse({"status": "success", "score": score})
         else:
-            return JsonResponse({"status": "fail", "message": "Face match failed"})
+            return JsonResponse({"status": "fail", "message": msg, "score": score})
 
     except Exception as e:
         logger.error("Error during face verification: %s", str(e))
         return JsonResponse({"status": "fail", "message": "Verification error"}, status=500)
+
+
+@login_required
+def revoke_student_face_view(request, student_id):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({"error": "Forbidden: Admin privileges required"}, status=403)
+
+    target_student = User.objects.filter(id=student_id, role="student").first()
+    if target_student:
+        revoke_student_face(target_student)
+
+    return redirect("teacher_dashboard")
 
 
 # ---------- SECURE PRESENCE V2 ENDPOINTS ----------
@@ -607,8 +683,8 @@ def submit_attendance_v2_view(request):
 
 @login_required
 def revoke_passkey_v2_view(request, passkey_id):
-    if request.user.role != "professor":
-        return JsonResponse({"error": "Unauthorized"}, status=403)
+    if not (request.user.is_staff or request.user.is_superuser):
+        return JsonResponse({"error": "Forbidden: Admin privileges required"}, status=403)
 
     passkey = PasskeyCredential.objects.filter(id=passkey_id).first()
     if passkey:

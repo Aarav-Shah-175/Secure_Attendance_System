@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Teacher Dashboard</title>
+    <title>Teacher Dashboard — Secure Attendance</title>
     <style>
         :root {
             --bg-start: #dde8f5;
@@ -49,7 +49,7 @@
             border-radius: 14px;
             box-shadow: var(--shadow);
             width: 100%;
-            max-width: 900px;
+            max-width: 920px;
             border: 1px solid var(--panel-border);
             border-top: 6px solid var(--primary);
         }
@@ -74,52 +74,89 @@
             padding: 0.55rem 0.75rem;
         }
 
-        a[href="{% url 'start_session' %}"] {
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 1.2rem;
+        }
+
+        .btn-new-session {
             display: inline-block;
             background-color: var(--primary);
             color: white;
-            padding: 0.75rem 1.5rem;
+            padding: 0.7rem 1.4rem;
             text-decoration: none;
             border-radius: 10px;
             font-weight: 600;
-            font-size: 1rem;
-            transition: background-color 0.2s ease, transform 0.08s ease;
-            margin-bottom: 0.65rem;
+            font-size: 0.95rem;
+            transition: background-color 0.2s ease;
         }
 
-        a[href="{% url 'start_session' %}"]:hover {
+        .btn-new-session:hover {
             background-color: var(--primary-hover);
+        }
+
+        .search-form {
+            display: flex;
+            gap: 0.5rem;
+            flex-grow: 1;
+            max-width: 400px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 0.65rem 0.85rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+
+        .btn-search {
+            background-color: #334155;
+            color: white;
+            border: none;
+            padding: 0.65rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
         }
 
         .session-card {
             border: 1px solid var(--session-border);
-            padding: 1rem 1.1rem;
-            margin-bottom: 0.75rem;
+            padding: 1.1rem;
+            margin-bottom: 1rem;
             border-radius: 12px;
             background-color: var(--session-bg);
             border-left: 5px solid #0b5f78;
+        }
+
+        .session-header {
             display: flex;
-            flex-direction: column;
-            gap: 0.4rem;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
         }
 
         .badge {
             display: inline-block;
-            padding: 0.2rem 0.5rem;
+            padding: 0.25rem 0.6rem;
             border-radius: 6px;
             font-size: 0.75rem;
             font-weight: 700;
             text-transform: uppercase;
         }
 
-        .badge-legacy {
-            background-color: #e2e8f0;
-            color: #475569;
-        }
-
-        .badge-v2 {
+        .badge-active {
             background-color: #dcfce7;
             color: #166534;
+        }
+
+        .badge-closed {
+            background-color: #f1f5f9;
+            color: #64748b;
         }
 
         .btn-export {
@@ -130,18 +167,34 @@
             border: 1px solid #cbd5e1;
             padding: 0.38rem 0.82rem;
             border-radius: 8px;
-            margin: 0.3rem 0.4rem 0.8rem 0;
+            margin-right: 0.4rem;
             background-color: var(--neutral-btn);
+            font-weight: 600;
+        }
+
+        .btn-export:hover {
+            background-color: var(--neutral-btn-hover);
+        }
+
+        .btn-integrity {
+            display: inline-block;
+            color: #0b5f78;
+            font-size: 0.85rem;
+            text-decoration: none;
+            border: 1px solid #0b5f78;
+            padding: 0.38rem 0.82rem;
+            border-radius: 8px;
+            margin-right: 0.4rem;
             font-weight: 600;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 0.35rem;
-            font-size: 0.95rem;
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
             border: 1px solid #e2e8f0;
-            border-radius: 12px;
+            border-radius: 8px;
             overflow: hidden;
             background-color: #ffffff;
         }
@@ -149,7 +202,7 @@
         th,
         td {
             text-align: left;
-            padding: 0.72rem 0.92rem;
+            padding: 0.65rem 0.85rem;
         }
 
         th {
@@ -170,9 +223,13 @@
             border: none;
             padding: 0.35rem 0.7rem;
             border-radius: 6px;
-            font-size: 0.8rem;
+            font-size: 0.78rem;
             font-weight: 600;
             cursor: pointer;
+        }
+
+        .btn-danger:hover {
+            background-color: var(--danger-hover);
         }
 
         a[href="{% url 'logout' %}"] {
@@ -190,91 +247,139 @@
 
 <body>
     <div class="dashboard-container">
+        {% if request.user.is_staff or request.user.is_superuser %}
+        <h2>Teacher & Admin Dashboard</h2>
+        {% else %}
         <h2>Teacher Dashboard</h2>
+        {% endif %}
 
-        <a href="{% url 'start_session' %}">Start New Session</a>
+        <div class="top-bar">
+            <a href="{% url 'start_session' %}" class="btn-new-session">Start New Session</a>
 
-        <h3>Your Active Sessions</h3>
+            <form method="GET" class="search-form">
+                <input type="text" name="q" class="search-input" placeholder="Search by course code (e.g. CS101)..."
+                    value="{{ search_query }}">
+                <button type="submit" class="btn-search">Search</button>
+            </form>
+        </div>
 
-        {% for session in sessions %}
+        <h3>30-Day Session History</h3>
+
+        {% for item in session_history %}
         <div class="session-card">
-            <p>
-                <strong>Course Code:</strong> {{ session.course_code }}
-                <!-- <span class="badge badge-v2">
-                    secure_presence_v2
-                </span> -->
-            </p>
-            <p><strong>Started:</strong> {{ session.timestamp }}</p>
-            <p><strong>Expiry:</strong> {{ session.expiry }}</p>
+            <div class="session-header">
+                <div>
+                    <strong style="font-size:1.1rem; color:#0f172a">{{ item.session.course_code|upper }}</strong>
+                    <span style="margin-left:0.5rem; font-size:0.85rem; color:#64748b;">
+                        Created: {{ item.session.timestamp|date:"M d, Y H:i" }}
+                    </span>
+                </div>
+                {% if item.is_active %}
+                <span class="badge badge-active">Active</span>
+                {% else %}
+                <span class="badge badge-closed">Closed</span>
+                {% endif %}
+            </div>
 
-            <div>
-                <a href="{% url 'verify_integrity' session.id %}"
-                    style="font-weight:600; color:#0b5f78; text-decoration:none;">
-                    Verify Session Integrity
-                </a>
+            <p style="margin:0.2rem 0 0.8rem 0; font-size:0.88rem; color:#475569;">
+                <strong>Expires:</strong> {{ item.session.expiry|date:"M d, Y H:i" }} |
+                <strong>Attended Students:</strong> {{ item.record_count }}
+            </p>
+
+            <div style="margin-bottom: 0.75rem;">
+                <a href="{% url 'verify_integrity' item.session.id %}" class="btn-integrity">Verify Integrity</a>
+                <a href="{% url 'export_csv' item.session.id %}" class="btn-export">Export CSV</a>
+                <a href="{% url 'export_xlsx' item.session.id %}" class="btn-export">Export XLSX</a>
+                <button type="button" class="btn-export"
+                    onclick="document.getElementById('list-{{ item.session.id }}').style.display = (document.getElementById('list-{{ item.session.id }}').style.display === 'none' ? 'block' : 'none')">
+                    Toggle Student List ({{ item.record_count }})
+                </button>
+            </div>
+
+            <div id="list-{{ item.session.id }}" style="display:none; margin-top:0.5rem;">
+                <h4 style="margin:0.4rem 0; font-size:0.9rem; color:#1e293b;">Attendance Records:</h4>
+                {% if item.records %}
+                <table>
+                    <tr>
+                        <th>Student Email</th>
+                        <th>Timestamp (IST)</th>
+                        <th>Client IP</th>
+                    </tr>
+                    {% for rec in item.records %}
+                    <tr>
+                        <td>{{ rec.student.email }}</td>
+                        <td>{{ rec.timestamp|date:"Y-m-d H:i:s" }}</td>
+                        <td>{{ rec.client_ip }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+                {% else %}
+                <p style="font-size:0.85rem; color:#64748b; margin:0.3rem 0;">No attendance records for this session.
+                </p>
+                {% endif %}
             </div>
         </div>
-        <div>
-            <a href="{% url 'export_csv' session.id %}" class="btn-export">Export CSV</a>
-            <a href="{% url 'export_xlsx' session.id %}" class="btn-export">Export XLSX</a>
-        </div>
         {% empty %}
-        <p>No active sessions.</p>
+        <p style="color:#64748b; padding:0.5rem 0;">No sessions found for the last 30 days matching your criteria.</p>
         {% endfor %}
 
-        <h3>Enrolled Student Passkeys</h3>
+        {% if request.user.is_staff or request.user.is_superuser %}
+        <h3>Student Credential Management & Admin Revocation</h3>
 
         <table>
             <tr>
-                <th>Student</th>
-                <th>Credential ID</th>
-                <th>Enrolled At</th>
-                <th>Sign Counter</th>
-                <th>Action</th>
+                <th>Student Email</th>
+                <th>Passkey Enrolled</th>
+                <th>Face ID Registered</th>
+                <th>Actions</th>
             </tr>
-            {% for passkey in passkeys %}
+            {% for item in student_credentials %}
             <tr>
-                <td>{{ passkey.student.email }}</td>
-                <td><code>{{ passkey.credential_id|slice:":16" }}...</code></td>
-                <td>{{ passkey.created_at }}</td>
-                <td>{{ passkey.sign_counter }}</td>
+                <td><strong>{{ item.student.email }}</strong></td>
                 <td>
-                    <form method="POST" action="{% url 'revoke_passkey' passkey.id %}" style="display:inline;">
+                    {% if item.passkey %}
+                    <span style="color:#166534; font-weight:600;">✓ Active</span>
+                    {% else %}
+                    <span style="color:#94a3b8;">Not Enrolled</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if item.has_face %}
+                    <span style="color:#166534; font-weight:600;">✓ Registered</span>
+                    {% else %}
+                    <span style="color:#94a3b8;">Not Registered</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if item.passkey %}
+                    <form method="POST" action="{% url 'revoke_passkey' item.passkey.id %}" style="display:inline;">
                         {% csrf_token %}
                         <button type="submit" class="btn-danger"
-                            onclick="return confirm('Revoke this student passkey credential?')">
-                            Revoke
+                            onclick="return confirm('Revoke WebAuthn Passkey for {{ item.student.email }}?')">
+                            Revoke Passkey
                         </button>
                     </form>
+                    {% endif %}
+
+                    {% if item.has_face %}
+                    <form method="POST" action="{% url 'revoke_face' item.student.id %}"
+                        style="display:inline; margin-left:0.3rem;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-danger" style="background-color:#b91c1c;"
+                            onclick="return confirm('Reset Face ID profile for {{ item.student.email }}?')">
+                            Reset Face ID
+                        </button>
+                    </form>
+                    {% endif %}
                 </td>
             </tr>
             {% empty %}
             <tr>
-                <td colspan="5">No active student passkeys registered.</td>
+                <td colspan="4" style="text-align:center;">No student accounts registered in system.</td>
             </tr>
             {% endfor %}
         </table>
-
-        <h3>Marked Attendance Records</h3>
-
-        <table>
-            <tr>
-                <th>Student</th>
-                <th>Time</th>
-                <th>Client IP</th>
-            </tr>
-            {% for record in attendance_records %}
-            <tr>
-                <td>{{ record.student.email }}</td>
-                <td>{{ record.timestamp }}</td>
-                <td>{{ record.client_ip }}</td>
-            </tr>
-            {% empty %}
-            <tr>
-                <td colspan="3">No attendance records yet.</td>
-            </tr>
-            {% endfor %}
-        </table>
+        {% endif %}
 
         <a href="{% url 'logout' %}">Logout</a>
     </div>
