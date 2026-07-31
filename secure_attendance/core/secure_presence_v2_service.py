@@ -126,7 +126,7 @@ def process_liveness_verification(
         return False, liveness_verification, f"Liveness verification failed: {decision.reason}"
 
 
-def issue_signing_challenge_v2(
+def issue_signing_challenge_v2( #Prevention against Replay Attack
     attempt_id: str,
     user: User
 ) -> Tuple[bool, Optional[Dict[str, Any]], str]:

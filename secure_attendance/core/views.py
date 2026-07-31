@@ -54,6 +54,8 @@ def login_view(request):
                 return redirect("teacher_dashboard")
             else:
                 return redirect("student_dashboard")
+        else:
+            return render(request, "login.html", {"error": "Invalid Email or Password."})
 
     return render(request, "login.html")
 
