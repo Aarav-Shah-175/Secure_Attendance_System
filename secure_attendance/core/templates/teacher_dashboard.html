@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -32,7 +33,7 @@
         body {
             font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background: radial-gradient(circle at 8% 8%, #c7d9ef 0%, transparent 26%),
-                        linear-gradient(160deg, var(--bg-start), var(--bg-end));
+                linear-gradient(160deg, var(--bg-start), var(--bg-end));
             display: flex;
             justify-content: center;
             align-items: flex-start;
@@ -145,7 +146,8 @@
             background-color: #ffffff;
         }
 
-        th, td {
+        th,
+        td {
             text-align: left;
             padding: 0.72rem 0.92rem;
         }
@@ -185,6 +187,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="dashboard-container">
         <h2>Teacher Dashboard</h2>
@@ -194,28 +197,29 @@
         <h3>Your Active Sessions</h3>
 
         {% for session in sessions %}
-            <div class="session-card">
-                <p>
-                    <strong>Course:</strong> {{ session.course_code }}
-                    <span class="badge {% if session.security_mode == 'secure_presence_v2' %}badge-v2{% else %}badge-legacy{% endif %}">
-                        {{ session.security_mode }}
-                    </span>
-                </p>
-                <p><strong>Started:</strong> {{ session.timestamp }}</p>
-                <p><strong>Expiry:</strong> {{ session.expiry }}</p>
+        <div class="session-card">
+            <p>
+                <strong>Course Code:</strong> {{ session.course_code }}
+                <!-- <span class="badge badge-v2">
+                    secure_presence_v2
+                </span> -->
+            </p>
+            <p><strong>Started:</strong> {{ session.timestamp }}</p>
+            <p><strong>Expiry:</strong> {{ session.expiry }}</p>
 
-                <div>
-                    <a href="{% url 'verify_integrity' session.id %}" style="font-weight:600; color:#0b5f78; text-decoration:none;">
-                        Verify Session Integrity
-                    </a>
-                </div>
-            </div>
             <div>
-                <a href="{% url 'export_csv' session.id %}" class="btn-export">Export CSV</a>
-                <a href="{% url 'export_xlsx' session.id %}" class="btn-export">Export XLSX</a>
+                <a href="{% url 'verify_integrity' session.id %}"
+                    style="font-weight:600; color:#0b5f78; text-decoration:none;">
+                    Verify Session Integrity
+                </a>
             </div>
+        </div>
+        <div>
+            <a href="{% url 'export_csv' session.id %}" class="btn-export">Export CSV</a>
+            <a href="{% url 'export_xlsx' session.id %}" class="btn-export">Export XLSX</a>
+        </div>
         {% empty %}
-            <p>No active sessions.</p>
+        <p>No active sessions.</p>
         {% endfor %}
 
         <h3>Enrolled Student Passkeys</h3>
@@ -237,7 +241,8 @@
                 <td>
                     <form method="POST" action="{% url 'revoke_passkey' passkey.id %}" style="display:inline;">
                         {% csrf_token %}
-                        <button type="submit" class="btn-danger" onclick="return confirm('Revoke this student passkey credential?')">
+                        <button type="submit" class="btn-danger"
+                            onclick="return confirm('Revoke this student passkey credential?')">
                             Revoke
                         </button>
                     </form>
@@ -274,4 +279,5 @@
         <a href="{% url 'logout' %}">Logout</a>
     </div>
 </body>
+
 </html>

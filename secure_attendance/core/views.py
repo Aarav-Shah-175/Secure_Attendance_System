@@ -291,6 +291,7 @@ def register_face(request):
         import cv2
         import numpy as np
         import torch
+        # pyrefly: ignore [missing-import]
         from PIL import Image
         from facenet_pytorch import MTCNN, InceptionResnetV1
 

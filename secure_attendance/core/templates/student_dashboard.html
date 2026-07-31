@@ -201,17 +201,16 @@
         {% for session in sessions %}
         <div class="session-card">
             <p>
-                <strong>Course:</strong> {{ session.course_code }}
-                <span
-                    class="badge {% if session.security_mode == 'secure_presence_v2' %}badge-v2{% else %}badge-legacy{% endif %}">
-                    {{ session.security_mode }}
-                </span>
+                <strong>Course Code:</strong> {{ session.course_code }}
+                <!-- <span class="badge">
+                    secure_presence_v2
+                </span> -->
             </p>
-            <p><strong>Expires:</strong> {{ session.expiry }}</p>
+            <p><strong>Expiry:</strong> {{ session.expiry }}</p>
 
             {% if session.security_mode == 'secure_presence_v2' %}
             <button onclick="submitAttendanceV2('{{ session.id }}')">
-                Submit Secure V2 Attendance
+                Submit Attendance
             </button>
             {% else %}
             <button onclick="startFaceVerification('{{ session.id }}', '{{ session.network_nonce }}')">

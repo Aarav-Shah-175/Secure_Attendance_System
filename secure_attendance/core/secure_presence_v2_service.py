@@ -254,4 +254,4 @@ def submit_attendance_v2(
         # Append canonical audit entry
         create_audit_entry_v2(record, attempt)
 
-        return True, "Secure V2 attendance recorded successfully."
+        return True, "Attendance recorded successfully."
