@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,6 +18,10 @@
             --button-bg: #0b5f78;
             --button-hover: #084f63;
             --shadow: 0 20px 34px -22px rgba(15, 23, 42, 0.5);
+            /* New error colors */
+            --error-bg: #fef2f2;
+            --error-border: #fca5a5;
+            --error-text: #991b1b;
         }
 
         * {
@@ -26,7 +31,7 @@
         body {
             font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background: radial-gradient(circle at 12% 8%, #c7d9ef 0%, transparent 27%),
-                        linear-gradient(155deg, var(--bg-start), var(--bg-end));
+                linear-gradient(155deg, var(--bg-start), var(--bg-end));
             display: flex;
             justify-content: center;
             align-items: center;
@@ -65,6 +70,21 @@
             padding: 0.55rem 0.7rem;
         }
 
+        /* NEW: Error alert message container styling */
+        .error-banner {
+            background-color: var(--error-bg);
+            border: 1px solid var(--error-border);
+            color: var(--error-text);
+            padding: 0.75rem 0.85rem;
+            border-radius: 10px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
         form {
             display: flex;
             flex-direction: column;
@@ -75,10 +95,13 @@
             font-size: 0.875rem;
             font-weight: 600;
             color: #334155;
+            margin-bottom: 0.25rem;
         }
 
         input[type="email"],
-        input[type="password"] {
+        .form-input {
+            width: 100%;
+            box-sizing: border-box;
             padding: 0.78rem 0.85rem;
             margin-bottom: 1rem;
             border: 1px solid var(--field-border);
@@ -89,14 +112,48 @@
         }
 
         input[type="email"]:focus,
-        input[type="password"]:focus {
+        .form-input:focus {
             outline: none;
             border-color: var(--field-focus);
             box-shadow: 0 0 0 3px rgba(11, 95, 120, 0.15);
             background-color: #ffffff;
         }
 
-        button {
+        .password-wrapper {
+            position: relative;
+            width: 100%;
+        }
+
+        .password-wrapper .form-input {
+            padding-right: 2.75rem;
+        }
+
+        .toggle-password {
+            position: absolute;
+            right: 0.85rem;
+            top: 36%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            padding: 0;
+            margin: 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #64748b;
+        }
+
+        .toggle-password:hover {
+            color: var(--field-focus);
+            background: none;
+        }
+
+        .toggle-password.visible .eye-strike {
+            display: none;
+        }
+
+        button[type="submit"] {
             background-color: var(--button-bg);
             color: white;
             padding: 0.8rem;
@@ -107,13 +164,14 @@
             cursor: pointer;
             transition: background-color 0.2s ease, transform 0.08s ease;
             margin-top: 0.25rem;
+            width: 100%;
         }
 
-        button:hover {
+        button[type="submit"]:hover {
             background-color: var(--button-hover);
         }
 
-        button:active {
+        button[type="submit"]:active {
             transform: translateY(1px);
         }
 
@@ -128,21 +186,62 @@
         }
     </style>
 </head>
+
 <body>
     <div class="login-container">
         <h2>Login</h2>
         <p class="subheading">Sign in to access your attendance portal</p>
 
+        <!-- NEW: Django error message conditional banner -->
+        {% if error %}
+        <div class="error-banner">
+            <!-- Warning SVG Icon -->
+            <svg xmlns="http://w3.org" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            {{ error }}
+        </div>
+        {% endif %}
+
         <form method="POST">
             {% csrf_token %}
-            <label>Email:</label><br>
-            <input type="email" name="email" required><br><br>
+            <label>Email:</label>
+            <input type="email" name="email" required>
 
-            <label>Password:</label><br>
-            <input type="password" name="password" required><br><br>
+            <label>Password:</label>
+            <div class="password-wrapper">
+                <input type="password" name="password" class="form-input" required>
+                <button type="button" class="toggle-password" onclick="togglePasswordVisibility()"
+                    aria-label="Toggle password visibility">
+                    <svg xmlns="http://w3.org" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <line class="eye-strike" x1="1" y1="1" x2="23" y2="23"></line>
+                    </svg>
+                </button>
+            </div>
 
             <button type="submit">Login</button>
         </form>
     </div>
 </body>
+<script>
+    function togglePasswordVisibility() {
+        var passwordInput = document.querySelector('[name="password"]');
+        var toggleBtn = document.querySelector('.toggle-password');
+
+        if (passwordInput.type === "password") {
+            passwordInput.type = "text";
+            toggleBtn.classList.add('visible');
+        } else {
+            passwordInput.type = "password";
+            toggleBtn.classList.remove('visible');
+        }
+    }
+</script>
+
 </html>

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -27,7 +28,7 @@
         body {
             font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background: radial-gradient(circle at 12% 8%, #c7d9ef 0%, transparent 27%),
-                        linear-gradient(155deg, var(--bg-start), var(--bg-end));
+                linear-gradient(155deg, var(--bg-start), var(--bg-end));
             display: flex;
             justify-content: center;
             align-items: center;
@@ -78,7 +79,8 @@
             color: #334155;
         }
 
-        input[name="course_code"], select[name="security_mode"] {
+        input[name="course_code"],
+        select[name="security_mode"] {
             width: 100%;
             padding: 0.78rem 0.85rem;
             border: 1px solid var(--field-border);
@@ -92,7 +94,8 @@
             text-transform: uppercase;
         }
 
-        input[name="course_code"]:focus, select[name="security_mode"]:focus {
+        input[name="course_code"]:focus,
+        select[name="security_mode"]:focus {
             outline: none;
             border-color: var(--field-focus);
             box-shadow: 0 0 0 3px rgba(11, 95, 120, 0.15);
@@ -129,6 +132,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="session-container">
         <h2>Start Attendance Session</h2>
@@ -141,13 +145,13 @@
                 <input name="course_code" required placeholder="e.g. CS101">
             </div>
 
-            <div>
+            <!-- <div>
                 <label>Security Mode:</label>
                 <select name="security_mode">
                     <option value="legacy">Legacy Mode (Browser ECDSA Key)</option>
                     <option value="secure_presence_v2" selected>Secure Presence V2 (Passkey + Server Liveness)</option>
                 </select>
-            </div>
+            </div> -->
 
             <button type="submit">Start Session</button>
         </form>
@@ -155,4 +159,5 @@
         <a href="{% url 'teacher_dashboard' %}">Back to Dashboard</a>
     </div>
 </body>
+
 </html>

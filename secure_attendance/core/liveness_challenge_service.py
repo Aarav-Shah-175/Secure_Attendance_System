@@ -22,8 +22,8 @@ import random
 import time
 import logging
 
-from django.core.cache import cache
-from django.conf import settings
+from django.core.cache import cache #type: ignore
+from django.conf import settings #type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +31,8 @@ logger = logging.getLogger(__name__)
 
 CHALLENGES = [
     {"type": "blink",    "text": "Blink 2 times",               "target": 2},
-    {"type": "left",     "text": "Turn your head LEFT",          "target": None},
-    {"type": "right",    "text": "Turn your head RIGHT",         "target": None},
+    {"type": "left",     "text": "Turn your head RIGHT",          "target": None},
+    {"type": "right",    "text": "Turn your head LEFT",         "target": None},
     {"type": "straight", "text": "Look straight at the camera",  "target": None},
 ]
 
@@ -66,11 +66,11 @@ def issue_liveness_challenge(attempt_id: str) -> dict:
     Issue a random liveness challenge for the given attempt.
 
     Returns a dict with:
-        challenge_type   – "blink" | "left" | "right" | "straight"
-        challenge_text   – human-readable instruction for the UI
-        challenge_target – int (blink only) or None
-        nonce            – HMAC token the client must echo back
-        time_limit       – seconds the client has to complete the challenge
+        challenge_type     "blink" | "left" | "right" | "straight"
+        challenge_text     human-readable instruction for the UI
+        challenge_target   int (blink only) or None
+        nonce              HMAC token the client must echo back
+        time_limit         seconds the client has to complete the challenge
     """
     challenge = random.choice(CHALLENGES)
     timestamp = int(time.time())
