@@ -10,6 +10,8 @@ urlpatterns = [
 
     # Teacher & Admin endpoints
     path('teacher/dashboard/', views.teacher_dashboard, name='teacher_dashboard'),
+    path('teacher/history/', views.session_history_view, name='session_history'),
+    path('teacher/admin-panel/', views.admin_dashboard, name='admin_dashboard'),
     path('teacher/start-session/', views.start_session, name='start_session'),
     path('teacher/verify/<uuid:session_id>/', views.verify_integrity_view, name='verify_integrity'),
     path('teacher/export-csv/<uuid:session_id>/', views.export_csv, name='export_csv'),

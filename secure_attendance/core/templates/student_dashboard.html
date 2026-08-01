@@ -446,7 +446,19 @@
 
                 // Step 7: WebAuthn passkey assertion prompt
                 statusEl.innerText = "Authorize passkey prompt...";
-                const assertion = await navigator.credentials.get({ publicKey: authOpts });
+                let assertion;
+                try {
+                    assertion = await navigator.credentials.get({ publicKey: authOpts });
+                } catch (webauthnErr) {
+                    // Give the student an actionable message
+                    let hint = webauthnErr.message || String(webauthnErr);
+                    if (hint.toLowerCase().includes("invalid domain") || hint.toLowerCase().includes("security error")) {
+                        hint = 'Invalid domain — make sure you opened this page via https://192-168-137-1.sslip.io:8000, not via the raw IP address.';
+                    }
+                    statusEl.innerText = "Passkey error: " + hint;
+                    statusEl.style.color = "red";
+                    return;
+                }
 
                 const assertionJSON = {
                     id: assertion.id,

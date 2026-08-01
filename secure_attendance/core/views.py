@@ -124,7 +124,33 @@ def teacher_dashboard(request):
     if request.user.role != "professor":
         return redirect("login")
 
-    # Fetch 30-day session history for professor
+    now = timezone.now()
+    # Home page shows only currently active (live) sessions for this professor
+    active_sessions = AttendanceSession.objects.filter(
+        professor=request.user,
+        active=True,
+        expiry__gt=now
+    ).order_by("-timestamp")
+
+    active_list = []
+    for s in active_sessions:
+        records = AttendanceRecord.objects.filter(session=s).select_related("student").order_by("-timestamp")
+        active_list.append({
+            "session": s,
+            "records": records,
+            "record_count": records.count(),
+        })
+
+    return render(request, "teacher_dashboard.html", {
+        "active_sessions": active_list,
+    })
+
+
+@login_required
+def session_history_view(request):
+    if request.user.role != "professor":
+        return redirect("login")
+
     thirty_days_ago = timezone.now() - timedelta(days=30)
     search_query = request.GET.get("q", "").strip()
 
@@ -137,33 +163,53 @@ def teacher_dashboard(request):
 
     sessions = sessions.order_by("-timestamp")
 
-    session_history = []
     now = timezone.now()
+    session_history = []
     for s in sessions:
         records = AttendanceRecord.objects.filter(session=s).select_related("student").order_by("-timestamp")
         session_history.append({
             "session": s,
             "records": records,
             "record_count": records.count(),
-            "is_active": s.active and s.expiry > now
+            "is_active": s.active and s.expiry > now,
         })
 
-    # Student Credential Management for Admin / Professor
+    return render(request, "session_history.html", {
+        "session_history": session_history,
+        "search_query": search_query,
+    })
+
+
+@login_required
+def admin_dashboard(request):
+    if not (request.user.is_staff or request.user.is_superuser):
+        return redirect("teacher_dashboard")
+
     students = User.objects.filter(role="student").order_by("email")
     student_credentials = []
+    passkey_count = 0
+    face_count = 0
+
     for st in students:
         passkey = PasskeyCredential.objects.filter(student=st, revoked=False).first()
         has_face = os.path.exists(f"embeddings/{st.id}.npy") or StudentProfile.objects.filter(user=st).exists()
+        
+        if passkey:
+            passkey_count += 1
+        if has_face:
+            face_count += 1
+
         student_credentials.append({
             "student": st,
             "passkey": passkey,
             "has_face": has_face,
         })
 
-    return render(request, "teacher_dashboard.html", {
-        "session_history": session_history,
+    return render(request, "admin_dashboard.html", {
         "student_credentials": student_credentials,
-        "search_query": search_query,
+        "total_students": len(student_credentials),
+        "passkey_count": passkey_count,
+        "face_count": face_count,
     })
 
 
