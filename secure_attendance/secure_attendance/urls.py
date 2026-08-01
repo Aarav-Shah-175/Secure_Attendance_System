@@ -8,18 +8,19 @@ urlpatterns = [
     path('', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
 
-    # Teacher endpoints
+    # Teacher & Admin endpoints
     path('teacher/dashboard/', views.teacher_dashboard, name='teacher_dashboard'),
+    path('teacher/history/', views.session_history_view, name='session_history'),
+    path('teacher/admin-panel/', views.admin_dashboard, name='admin_dashboard'),
     path('teacher/start-session/', views.start_session, name='start_session'),
     path('teacher/verify/<uuid:session_id>/', views.verify_integrity_view, name='verify_integrity'),
     path('teacher/export-csv/<uuid:session_id>/', views.export_csv, name='export_csv'),
     path('teacher/export-xlsx/<uuid:session_id>/', views.export_xlsx, name='export_xlsx'),
     path('teacher/revoke-passkey/<uuid:passkey_id>/', views.revoke_passkey_v2_view, name='revoke_passkey'),
+    path('teacher/revoke-face/<uuid:student_id>/', views.revoke_student_face_view, name='revoke_face'),
 
-    # Legacy student endpoints
+    # Student biometric & core endpoints
     path('student/dashboard/', views.student_dashboard, name='student_dashboard'),
-    path('student/register-device/', views.register_device_view, name='register_device'),
-    path('student/submit/', views.submit_attendance_view, name='submit_attendance'),
     path('student/face-verify/', views.face_verify, name='face_verify'),
     path('student/register-face/', views.register_face, name='register_face'),
     path('student/face-status/', views.check_face_status, name='check_face_status'),

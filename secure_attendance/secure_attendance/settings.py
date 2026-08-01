@@ -143,7 +143,7 @@ AUTH_USER_MODEL = 'core.User'
 
 # ---------- SECURE PRESENCE PHASE 2 SETTINGS ----------
 SECURE_PRESENCE_V2_ENABLED = os.getenv("SECURE_PRESENCE_V2_ENABLED", "True") == "True"
-PRESENCE_HEARTBEAT_MAX_AGE_SECONDS = int(os.getenv("PRESENCE_HEARTBEAT_MAX_AGE_SECONDS", "15"))
+PRESENCE_HEARTBEAT_MAX_AGE_SECONDS = int(os.getenv("PRESENCE_HEARTBEAT_MAX_AGE_SECONDS", "45"))
 
 # rpId must be a valid domain name — IP addresses are rejected by WebAuthn spec.
 # sslip.io is a free public DNS service: 192-168-137-1.sslip.io resolves to 192.168.137.1.

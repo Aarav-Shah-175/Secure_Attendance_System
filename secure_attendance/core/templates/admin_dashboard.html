@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel — Secure Attendance</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-start: #1e1b4b;
+            --bg-end: #312e81;
+            --panel-bg: #ffffff;
+            --panel-border: #c7d2fe;
+            --text-main: #0f172a;
+            --text-muted: #475569;
+            --heading-line: #e2e8f0;
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --neutral-btn: #f0f0ff;
+            --neutral-btn-text: #1e1b4b;
+            --neutral-btn-hover: #e0e0ff;
+            --danger: #dc2626;
+            --danger-dark: #b91c1c;
+            --shadow: 0 24px 40px -20px rgba(30, 27, 75, 0.55);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, var(--bg-start) 0%, var(--bg-end) 100%);
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            margin: 0;
+            padding: 2rem 1rem;
+            color: var(--text-main);
+        }
+
+        .container {
+            background-color: var(--panel-bg);
+            padding: 2rem;
+            border-radius: 18px;
+            box-shadow: var(--shadow);
+            width: 100%;
+            max-width: 980px;
+            border: 1px solid var(--panel-border);
+            border-top: 6px solid var(--primary);
+        }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--heading-line);
+            padding-bottom: 1rem;
+            margin-bottom: 1.75rem;
+            flex-wrap: wrap;
+            gap: 0.8rem;
+        }
+
+        .page-header h2 { margin: 0; font-size: 1.3rem; font-weight: 700; }
+
+        .section-label {
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #6366f1;
+            margin-bottom: 0.2rem;
+        }
+
+        .admin-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            background: #ede9fe;
+            color: #4f46e5;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.28rem 0.7rem;
+            border-radius: 20px;
+            letter-spacing: 0.04em;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 0.55rem 1.1rem;
+            border-radius: 9px;
+            font-weight: 600;
+            font-size: 0.875rem;
+            text-decoration: none;
+            cursor: pointer;
+            border: none;
+            transition: background-color 0.18s, transform 0.1s;
+            font-family: inherit;
+        }
+
+        .btn:active { transform: scale(0.97); }
+
+        .btn-back {
+            background-color: var(--neutral-btn);
+            color: var(--neutral-btn-text);
+            border: 1px solid var(--panel-border);
+        }
+
+        .btn-back:hover { background-color: var(--neutral-btn-hover); }
+
+        .stats-row {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.75rem;
+            flex-wrap: wrap;
+        }
+
+        .stat-card {
+            flex: 1;
+            min-width: 140px;
+            background: #f5f3ff;
+            border: 1px solid #ddd6fe;
+            border-radius: 12px;
+            padding: 1rem 1.2rem;
+        }
+
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #4f46e5;
+            line-height: 1;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-card .label {
+            font-size: 0.78rem;
+            color: #64748b;
+            font-weight: 500;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            overflow: hidden;
+            background: white;
+        }
+
+        th {
+            background: #f5f3ff;
+            color: #3730a3;
+            font-weight: 600;
+            padding: 0.7rem 0.9rem;
+            border-bottom: 1px solid #ddd6fe;
+            text-align: left;
+        }
+
+        td {
+            color: var(--text-muted);
+            padding: 0.7rem 0.9rem;
+            border-bottom: 1px solid #eef2f7;
+            vertical-align: middle;
+        }
+
+        tr:last-child td { border-bottom: none; }
+
+        .status-enrolled {
+            color: #15803d;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .status-missing {
+            color: #94a3b8;
+            font-size: 0.85rem;
+        }
+
+        .action-cell {
+            display: flex;
+            gap: 0.4rem;
+            flex-wrap: wrap;
+        }
+
+        .btn-danger {
+            background-color: var(--danger);
+            color: white;
+            padding: 0.32rem 0.72rem;
+            border-radius: 7px;
+            font-size: 0.77rem;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.15s;
+            font-family: inherit;
+        }
+
+        .btn-danger:hover { background-color: var(--danger-dark); }
+
+        .btn-reset-face {
+            background-color: #9f1239;
+        }
+
+        .btn-reset-face:hover { background-color: #881337; }
+
+        .empty-row td {
+            text-align: center;
+            padding: 2.5rem;
+            color: #94a3b8;
+        }
+
+        .logout-link {
+            display: block;
+            margin-top: 2rem;
+            color: var(--danger);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.875rem;
+            text-align: right;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 1rem;
+        }
+
+        .logout-link:hover { text-decoration: underline; }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="page-header">
+            <div>
+                <p class="section-label">Secure Attendance &rsaquo; Admin</p>
+                <h2>Student Credential Management</h2>
+            </div>
+            <div style="display:flex; gap:0.6rem; align-items:center;">
+                <span class="admin-badge">🛡 Staff / Admin Access</span>
+                <a href="{% url 'teacher_dashboard' %}" class="btn btn-back">← Dashboard</a>
+            </div>
+        </div>
+
+        <!-- Quick stats -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="value">{{ total_students }}</div>
+                <div class="label">Total Students</div>
+            </div>
+            <div class="stat-card">
+                <div class="value">{{ passkey_count }}</div>
+                <div class="label">Passkeys Enrolled</div>
+            </div>
+            <div class="stat-card">
+                <div class="value">{{ face_count }}</div>
+                <div class="label">Face IDs Registered</div>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Student Email</th>
+                    <th>Passkey</th>
+                    <th>Face ID</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in student_credentials %}
+                <tr>
+                    <td><strong style="color:#0f172a;">{{ item.student.email }}</strong></td>
+                    <td>
+                        {% if item.passkey %}
+                        <span class="status-enrolled">✓ Active</span>
+                        {% else %}
+                        <span class="status-missing">Not Enrolled</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if item.has_face %}
+                        <span class="status-enrolled">✓ Registered</span>
+                        {% else %}
+                        <span class="status-missing">Not Registered</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="action-cell">
+                            {% if item.passkey %}
+                            <form method="POST" action="{% url 'revoke_passkey' item.passkey.id %}" style="display:inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-danger"
+                                    onclick="return confirm('Revoke passkey for {{ item.student.email }}? They will need to re-register.')">
+                                    Revoke Passkey
+                                </button>
+                            </form>
+                            {% endif %}
+
+                            {% if item.has_face %}
+                            <form method="POST" action="{% url 'revoke_face' item.student.id %}" style="display:inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-danger btn-reset-face"
+                                    onclick="return confirm('Reset Face ID for {{ item.student.email }}? They will need to re-register their face.')">
+                                    Reset Face ID
+                                </button>
+                            </form>
+                            {% endif %}
+
+                            {% if not item.passkey and not item.has_face %}
+                            <span style="font-size:0.8rem; color:#94a3b8;">No credentials to revoke</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr class="empty-row">
+                    <td colspan="4">No student accounts registered in the system.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <a href="{% url 'logout' %}" class="logout-link">Logout →</a>
+    </div>
+</body>
+
+</html>

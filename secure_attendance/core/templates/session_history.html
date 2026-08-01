@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Teacher Dashboard — Secure Attendance</title>
+    <title>Session History — Secure Attendance</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -21,13 +21,10 @@
             --neutral-btn: #eaf1f8;
             --neutral-btn-text: #1f3347;
             --neutral-btn-hover: #d7e5f2;
-            --danger: #dc2626;
             --shadow: 0 20px 36px -24px rgba(15, 23, 42, 0.5);
         }
 
-        * {
-            box-sizing: border-box;
-        }
+        * { box-sizing: border-box; }
 
         body {
             font-family: 'Inter', 'Segoe UI', sans-serif;
@@ -42,7 +39,7 @@
             color: var(--text-main);
         }
 
-        .dashboard-container {
+        .container {
             background-color: var(--panel-bg);
             padding: 2rem;
             border-radius: 16px;
@@ -64,17 +61,15 @@
             gap: 0.8rem;
         }
 
-        .page-header h2 {
-            margin: 0;
-            font-weight: 700;
-            font-size: 1.35rem;
-        }
+        .page-header h2 { margin: 0; font-weight: 700; font-size: 1.3rem; }
 
-        .header-actions {
-            display: flex;
-            gap: 0.6rem;
-            flex-wrap: wrap;
-            align-items: center;
+        .section-label {
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #64748b;
+            margin-bottom: 0.2rem;
         }
 
         .btn {
@@ -89,143 +84,101 @@
             transition: background-color 0.18s, transform 0.1s;
         }
 
-        .btn:active {
-            transform: scale(0.97);
-        }
+        .btn:active { transform: scale(0.97); }
 
-        .btn-primary {
-            background-color: var(--primary);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background-color: var(--primary-hover);
-        }
-
-        .btn-secondary {
+        .btn-back {
             background-color: var(--neutral-btn);
             color: var(--neutral-btn-text);
             border: 1px solid #cbd5e1;
         }
 
-        .btn-secondary:hover {
-            background-color: var(--neutral-btn-hover);
+        .btn-back:hover { background-color: var(--neutral-btn-hover); }
+
+        .search-row {
+            display: flex;
+            gap: 0.6rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
         }
 
-        .btn-admin {
-            background-color: #1e1b4b;
+        .search-input {
+            flex: 1;
+            min-width: 200px;
+            padding: 0.65rem 0.9rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 9px;
+            font-size: 0.9rem;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .search-input:focus { border-color: var(--primary); }
+
+        .btn-search {
+            background-color: #334155;
             color: white;
+            padding: 0.65rem 1.2rem;
         }
 
-        .btn-admin:hover {
-            background-color: #312e81;
-        }
-
-        .section-title {
-            font-size: 0.8rem;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            color: #64748b;
-            margin: 0 0 1rem 0;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 3rem 1rem;
-            color: #94a3b8;
-        }
-
-        .empty-state .icon {
-            font-size: 2.5rem;
-            margin-bottom: 0.5rem;
-        }
-
-        .empty-state p {
-            font-size: 0.95rem;
-            margin: 0.25rem 0;
-        }
-
-        .session-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 1rem;
-        }
+        .btn-search:hover { background-color: #1e293b; }
 
         .session-card {
             border: 1px solid #e2e8f0;
-            border-radius: 14px;
-            background: #f8fafc;
-            border-left: 5px solid #22c55e;
             padding: 1.15rem 1.2rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
+            margin-bottom: 1rem;
+            border-radius: 14px;
+            background-color: #f8fafc;
+            border-left: 5px solid var(--primary);
             transition: box-shadow 0.2s;
         }
 
-        .session-card:hover {
-            box-shadow: 0 6px 20px -8px rgba(15, 23, 42, 0.18);
+        .session-card:hover { box-shadow: 0 4px 18px -6px rgba(15,23,42,0.14); }
+
+        .session-card.is-active { border-left-color: #22c55e; }
+
+        .session-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.45rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
         }
 
-        .session-course {
-            font-size: 1.15rem;
+        .course-code {
+            font-size: 1.1rem;
             font-weight: 700;
             color: #0f172a;
-            letter-spacing: 0.02em;
         }
 
-        .session-meta {
-            font-size: 0.82rem;
-            color: #64748b;
-            line-height: 1.6;
-        }
-
-        .session-meta strong {
-            color: #334155;
-        }
-
-        .badge-live {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.3rem;
-            background: #dcfce7;
-            color: #15803d;
+        .badge {
+            display: inline-block;
+            padding: 0.22rem 0.6rem;
+            border-radius: 20px;
             font-size: 0.72rem;
             font-weight: 700;
-            padding: 0.2rem 0.55rem;
-            border-radius: 20px;
             text-transform: uppercase;
-            letter-spacing: 0.06em;
+            letter-spacing: 0.05em;
         }
 
-        .pulse {
-            width: 7px;
-            height: 7px;
-            background: #22c55e;
-            border-radius: 50%;
-            animation: pulse 1.5s infinite;
+        .badge-active { background: #dcfce7; color: #15803d; }
+        .badge-closed { background: #f1f5f9; color: #64748b; }
+
+        .session-meta {
+            font-size: 0.83rem;
+            color: #64748b;
+            margin-bottom: 0.8rem;
+            line-height: 1.65;
         }
 
-        @keyframes pulse {
-
-            0%,
-            100% {
-                opacity: 1;
-                transform: scale(1);
-            }
-
-            50% {
-                opacity: 0.4;
-                transform: scale(1.5);
-            }
-        }
+        .session-meta strong { color: #334155; }
 
         .action-row {
             display: flex;
             flex-wrap: wrap;
             gap: 0.45rem;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.8rem;
         }
 
         .btn-action {
@@ -243,9 +196,7 @@
             font-family: inherit;
         }
 
-        .btn-action:hover {
-            background-color: var(--neutral-btn-hover);
-        }
+        .btn-action:hover { background-color: var(--neutral-btn-hover); }
 
         .btn-integrity {
             border-color: var(--primary);
@@ -253,8 +204,11 @@
             background: #f0f8fc;
         }
 
-        .btn-integrity:hover {
-            background: #e0f2f8;
+        .btn-integrity:hover { background: #e0f2f8; }
+
+        .toggle-panel {
+            display: none;
+            margin-top: 0.6rem;
         }
 
         table {
@@ -265,7 +219,6 @@
             border-radius: 8px;
             overflow: hidden;
             background: white;
-            margin-top: 0.5rem;
         }
 
         th {
@@ -283,10 +236,23 @@
             border-bottom: 1px solid #eef2f7;
         }
 
+        .empty-state {
+            text-align: center;
+            padding: 3.5rem 1rem;
+            color: #94a3b8;
+        }
+
+        .empty-state .icon { font-size: 2.5rem; margin-bottom: 0.6rem; }
+
+        .empty-state p {
+            margin: 0.25rem 0;
+            font-size: 0.95rem;
+        }
+
         .logout-link {
             display: block;
             margin-top: 2rem;
-            color: var(--danger);
+            color: #dc2626;
             text-decoration: none;
             font-weight: 600;
             font-size: 0.875rem;
@@ -295,51 +261,44 @@
             padding-top: 1rem;
         }
 
-        .logout-link:hover {
-            text-decoration: underline;
-        }
+        .logout-link:hover { text-decoration: underline; }
     </style>
 </head>
 
 <body>
-    <div class="dashboard-container">
+    <div class="container">
         <div class="page-header">
             <div>
-                <p class="section-title" style="margin-bottom:0.2rem;">Secure Attendance</p>
-                <h2>
-                    {% if request.user.is_staff or request.user.is_superuser %}
-                    Teacher &amp; Admin Dashboard
-                    {% else %}
-                    Teacher Dashboard
-                    {% endif %}
-                </h2>
+                <p class="section-label">Secure Attendance</p>
+                <h2>30-Day Session History</h2>
             </div>
-            <div class="header-actions">
-                <a href="{% url 'start_session' %}" class="btn btn-primary">Start New Session</a>
-                <a href="{% url 'session_history' %}" class="btn btn-secondary">Session History</a>
-                {% if request.user.is_staff or request.user.is_superuser %}
-                <a href="{% url 'admin_dashboard' %}" class="btn btn-admin">🛡 Admin Panel</a>
-                {% endif %}
-            </div>
+            <a href="{% url 'teacher_dashboard' %}" class="btn btn-back">← Back to Dashboard</a>
         </div>
 
-        <p class="section-title">Live Active Sessions</p>
+        <form method="GET" class="search-row">
+            <input type="text" name="q" class="search-input"
+                placeholder="Filter by course code (e.g. CS101)..."
+                value="{{ search_query }}">
+            <button type="submit" class="btn btn-search btn-action">Search</button>
+            {% if search_query %}
+            <a href="{% url 'session_history' %}" class="btn btn-action">✕ Clear</a>
+            {% endif %}
+        </form>
 
-        {% if active_sessions %}
-        <div style="display: flex; flex-direction: column; gap: 1rem;">
-            {% for item in active_sessions %}
-            <div class="session-card" style="border-left: 5px solid #22c55e;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.5rem;">
-                    <div>
-                        <span class="session-course">{{ item.session.course_code|upper }}</span>
-                        <span style="margin-left:0.5rem; font-size:0.83rem; color:#64748b;">
-                            Created: {{ item.session.timestamp|date:"M d, Y H:i" }}
-                        </span>
-                    </div>
-                    <span class="badge-live"><span class="pulse"></span> Live</span>
+        {% if session_history %}
+            {% for item in session_history %}
+            <div class="session-card {% if item.is_active %}is-active{% endif %}">
+                <div class="session-header">
+                    <span class="course-code">{{ item.session.course_code|upper }}</span>
+                    {% if item.is_active %}
+                    <span class="badge badge-active">● Active</span>
+                    {% else %}
+                    <span class="badge badge-closed">Closed</span>
+                    {% endif %}
                 </div>
 
-                <div class="session-meta" style="margin-bottom:0.75rem;">
+                <div class="session-meta">
+                    <strong>Created:</strong> {{ item.session.timestamp|date:"M d, Y H:i" }} &nbsp;|&nbsp;
                     <strong>Expires:</strong> {{ item.session.expiry|date:"M d, Y H:i" }} &nbsp;|&nbsp;
                     <strong>Attended:</strong> {{ item.record_count }} student{{ item.record_count|pluralize }}
                 </div>
@@ -349,12 +308,12 @@
                     <a href="{% url 'export_csv' item.session.id %}" class="btn-action">⬇ Export CSV</a>
                     <a href="{% url 'export_xlsx' item.session.id %}" class="btn-action">⬇ Export XLSX</a>
                     <button type="button" class="btn-action"
-                        onclick="var p=document.getElementById('active-list-{{ item.session.id }}');p.style.display=p.style.display==='none'?'block':'none'">
+                        onclick="var p=document.getElementById('panel-{{ item.session.id }}');p.style.display=(p.style.display==='none'||!p.style.display)?'block':'none'">
                         👥 Attendance List ({{ item.record_count }})
                     </button>
                 </div>
 
-                <div id="active-list-{{ item.session.id }}" style="display:none; margin-top:0.6rem;">
+                <div id="panel-{{ item.session.id }}" class="toggle-panel" style="display:none;">
                     {% if item.records %}
                     <table>
                         <thead>
@@ -375,17 +334,16 @@
                         </tbody>
                     </table>
                     {% else %}
-                    <p style="font-size:0.84rem; color:#94a3b8; margin:0.4rem 0;">No attendance records for this session yet.</p>
+                    <p style="font-size:0.84rem; color:#94a3b8; margin:0.4rem 0;">No attendance records for this session.</p>
                     {% endif %}
                 </div>
             </div>
             {% endfor %}
-        </div>
         {% else %}
         <div class="empty-state">
-            <div class="icon">📭</div>
-            <p><strong>No active sessions right now.</strong></p>
-            <p>Start a new session to begin taking attendance.</p>
+            <div class="icon">🗂</div>
+            <p><strong>No sessions found</strong>{% if search_query %} for "{{ search_query }}"{% endif %}.</p>
+            <p>Sessions from the last 30 days will appear here.</p>
         </div>
         {% endif %}
 

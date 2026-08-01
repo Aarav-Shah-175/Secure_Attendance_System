@@ -2,17 +2,17 @@ import json
 import base64
 import os
 from typing import Tuple, Dict, Any, Optional
-from django.conf import settings
-from django.utils import timezone
+from django.conf import settings #type: ignore 
+from django.utils import timezone #type: ignore
 from core.models import User, PasskeyCredential
-import webauthn
-from webauthn.helpers.structs import (
+import webauthn #type: ignore
+from webauthn.helpers.structs import (  #type: ignore
     PublicKeyCredentialCreationOptions,
     PublicKeyCredentialRequestOptions,
     UserVerificationRequirement,
     AuthenticatorSelectionCriteria,
-    PublicKeyCredentialDescriptor, #type: ignore
-    PublicKeyCredentialType, #type: ignore
+    PublicKeyCredentialDescriptor, 
+    PublicKeyCredentialType,
 ) 
 
 
