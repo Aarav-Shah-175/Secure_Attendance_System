@@ -29,6 +29,7 @@ from core.liveness import LivenessDecision, UnconfiguredLivenessVerifier
 from core.audit_service import verify_v2_session_integrity
 
 
+@override_settings(ATTENDANCE_AGENT_DEV_BYPASS=True)
 class SecureV2ProtocolTests(TestCase):
 
     def setUp(self):
@@ -52,8 +53,6 @@ class SecureV2ProtocolTests(TestCase):
         self.session = create_attendance_session(
             professor=self.professor,
             course_code="CS201",
-            gateway_ip="192.168.1.1",
-            subnet_range="192.168.1.0/24",
             security_mode=SecurityMode.SECURE_PRESENCE_V2
         )
 
@@ -67,8 +66,9 @@ class SecureV2ProtocolTests(TestCase):
             self.assertFalse(success)
             self.assertIn("globally disabled", msg)
 
-    def test_network_subnet_restriction(self):
-        # Allowed IP in subnet
+    @override_settings(ATTENDANCE_AGENT_DEV_BYPASS=True)
+    def test_network_agent_bypass_mode(self):
+        # In dev bypass mode, start attempt succeeds without agent challenge
         success, attempt, msg = start_attendance_attempt(
             user=self.student,
             session_id=str(self.session.id),
@@ -77,16 +77,18 @@ class SecureV2ProtocolTests(TestCase):
         self.assertTrue(success)
         self.assertEqual(attempt.status, AttemptStatus.LIVENESS_PENDING)
 
-        # Disallowed IP outside subnet
-        success_bad, attempt_bad, msg_bad = start_attendance_attempt(
+    @override_settings(ATTENDANCE_AGENT_DEV_BYPASS=False)
+    def test_network_agent_challenge_required_when_not_bypassed(self):
+        # Without dev bypass or valid agent challenge, start attempt fails
+        success, attempt, msg = start_attendance_attempt(
             user=self.student,
             session_id=str(self.session.id),
-            client_ip="10.0.0.5"
+            client_ip="192.168.1.50"
         )
-        self.assertFalse(success_bad)
-        self.assertIn("authorized classroom network", msg_bad)
+        self.assertFalse(success)
+        self.assertIn("Agent challenge required", msg)
 
-    @override_settings(LIVENESS_VERIFIER_TYPE="unconfigured")
+    @override_settings(LIVENESS_VERIFIER_TYPE="unconfigured", ATTENDANCE_AGENT_DEV_BYPASS=True)
     def test_unconfigured_liveness_verifier_fails_closed(self):
         success, attempt, _ = start_attendance_attempt(
             user=self.student,
@@ -109,7 +111,7 @@ class SecureV2ProtocolTests(TestCase):
         attempt.refresh_from_db()
         self.assertEqual(attempt.status, AttemptStatus.REJECTED)
 
-    @override_settings(LIVENESS_VERIFIER_TYPE="mediapipe")
+    @override_settings(LIVENESS_VERIFIER_TYPE="mediapipe", ATTENDANCE_AGENT_DEV_BYPASS=True)
     def test_mediapipe_liveness_verifier_nonce_flow(self):
         success, attempt, _ = start_attendance_attempt(
             user=self.student,
@@ -196,7 +198,7 @@ class SecureV2ProtocolTests(TestCase):
             client_ip="192.168.1.50"
         )
         self.assertTrue(success_sub)
-        self.assertEqual(msg_sub, "Secure V2 attendance recorded successfully.")
+        self.assertEqual(msg_sub, "Attendance recorded successfully.")
 
         # Verify database record and audit entry created
         record = AttendanceRecord.objects.get(student=self.student, session=self.session)

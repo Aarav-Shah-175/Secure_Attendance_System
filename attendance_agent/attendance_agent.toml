@@ -1,0 +1,28 @@
+# Attendance Agent — Configuration Template
+# Copy this file to your working directory and edit values.
+# Can also be overridden by environment variables (see config.py).
+
+[agent]
+# Port the agent HTTP server listens on (students connect here over LAN)
+port = 5000
+# Bind address — 0.0.0.0 means all interfaces
+host = "0.0.0.0"
+# Hotspot IP advertised in logs (informational only)
+hotspot_ip = "192.168.137.1"
+# Directory to store Ed25519 identity key (created automatically)
+key_dir = "~/.secure_attendance"
+# How long (seconds) a challenge nonce is valid before expiry
+challenge_ttl_seconds = 30
+# How often (seconds) the agent sends heartbeats to Django
+heartbeat_interval_seconds = 30
+# Enable mDNS advertisement (http://attendance.local/) — requires zeroconf package
+mdns_enabled = false
+mdns_name = "attendance"
+
+[django]
+# URL of the Django server (HTTPS in production, HTTP for local dev)
+url = "https://192-168-137-1.sslip.io:8000"
+# Pre-shared bearer token — must match ATTENDANCE_AGENT_API_TOKEN in Django .env
+api_token = "secure_presence_v3_default_token"
+# Set to true when Django has a real TLS certificate (e.g. Let's Encrypt)
+verify_ssl = false

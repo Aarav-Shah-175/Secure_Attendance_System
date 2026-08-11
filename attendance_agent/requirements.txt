@@ -1,0 +1,5 @@
+# Attendance Agent — Python dependencies
+flask>=3.0.0
+requests>=2.31.0
+cryptography>=42.0.0
+tomli>=2.0.0; python_version < "3.11"

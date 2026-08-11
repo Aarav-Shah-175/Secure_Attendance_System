@@ -20,9 +20,10 @@ from core.webauthn_service import (
     verify_passkey_authentication
 )
 from core.presence_service import (
-    verify_network_subnet,
+    record_presence_heartbeat,
     has_recent_valid_heartbeat
 )
+from core.agent_verification import verify_agent_challenge
 from core.crypto_utils import sha256_hash
 from core.audit_service import create_audit_entry_v2
 
@@ -34,10 +35,17 @@ def is_secure_v2_enabled() -> bool:
 def start_attendance_attempt(
     user: User,
     session_id: str,
-    client_ip: str
+    client_ip: str,
+    agent_nonce: str = "",
+    agent_timestamp: int = 0,
+    agent_proof: str = "",
+    agent_sig: str = "",
 ) -> Tuple[bool, Optional[AttendanceAttempt], str]:
     """
     Step 1 of Secure V2 flow: Initialize a short-lived attendance attempt for student.
+
+    Network presence is now verified via the Attendance Agent challenge-response.
+    Pass agent_nonce, agent_timestamp, agent_proof, agent_sig from the student browser.
     """
     if not is_secure_v2_enabled():
         return False, None, "Secure Presence V2 is globally disabled."
@@ -52,8 +60,24 @@ def start_attendance_attempt(
     if timezone.now() > session.expiry:
         return False, None, "Attendance session has expired."
 
-    if not verify_network_subnet(client_ip, session):
-        return False, None, "Not connected to authorized classroom network."
+    # --- Network Presence Verification via Attendance Agent ---
+    # Verify the challenge the student fetched from the Agent over HTTP (LAN)
+    if agent_nonce and agent_sig:
+        ok, reason = verify_agent_challenge(
+            session=session,
+            nonce=agent_nonce,
+            timestamp=agent_timestamp,
+            proof=agent_proof,
+            agent_sig=agent_sig,
+        )
+        if not ok:
+            return False, None, f"Network presence verification failed: {reason}"
+    else:
+        # No agent challenge provided — reject (unless running in dev without agent)
+        from django.conf import settings as _settings
+        dev_mode = getattr(_settings, "ATTENDANCE_AGENT_DEV_BYPASS", False)
+        if not dev_mode:
+            return False, None, "Agent challenge required. Ensure the Attendance Agent is running."
 
     # Check already marked attendance
     if AttendanceRecord.objects.filter(student=user, session=session).exists():
@@ -69,7 +93,10 @@ def start_attendance_attempt(
         session=session,
         client_ip=client_ip,
         status=AttemptStatus.LIVENESS_PENDING,
-        expires_at=timezone.now() + timedelta(minutes=5)
+        expires_at=timezone.now() + timedelta(minutes=5),
+        agent_challenge_nonce=agent_nonce or None,
+        agent_challenge_ts=agent_timestamp or None,
+        agent_proof_verified=bool(agent_nonce and agent_sig),
     )
 
     return True, attempt, "Attendance attempt initialized."
@@ -207,12 +234,7 @@ def submit_attendance_v2(
             attempt.save(update_fields=['status', 'failure_reason'])
             return False, "Duplicate attendance."
 
-        if not verify_network_subnet(client_ip, session):
-            attempt.status = AttemptStatus.REJECTED
-            attempt.failure_reason = "subnet_mismatch"
-            attempt.save(update_fields=['status', 'failure_reason'])
-            return False, "Network subnet mismatch."
-
+        # Presence heartbeat check (still used for long-running sessions)
         if not has_recent_valid_heartbeat(attempt, user):
             attempt.status = AttemptStatus.REJECTED
             attempt.failure_reason = "heartbeat_expired"

@@ -7,6 +7,15 @@ from django.contrib.auth.models import (  # type: ignore
 )
 from core.crypto_utils import generate_ecdsa_keypair, aes_encrypt  # type: ignore
 
+# ---------------------------------------------------------------------------
+# NOTE ON ARCHITECTURE (v3 — Agent-based network verification)
+# ---------------------------------------------------------------------------
+# gateway_ip and subnet_range on AttendanceSession are kept for backward
+# compatibility with existing records. They are no longer used for verification.
+# Network verification is now handled by the standalone Attendance Agent
+# via HMAC-SHA256 challenge-response.  See core/agent_verification.py.
+# ---------------------------------------------------------------------------
+
 
 class SecurityMode(models.TextChoices):
     LEGACY = "legacy", "Legacy"
@@ -95,8 +104,13 @@ class AttendanceSession(models.Model):
     expiry = models.DateTimeField()
     network_nonce = models.TextField()
     session_signature = models.TextField()
-    gateway_ip = models.GenericIPAddressField()
-    subnet_range = models.CharField(max_length=50)
+    # Kept for backward compatibility; no longer used for verification.
+    # Set to '0.0.0.0' / 'agent' when session was started via Attendance Agent.
+    gateway_ip = models.GenericIPAddressField(null=True, blank=True)
+    subnet_range = models.CharField(max_length=50, blank=True, default='agent')
+    # Attendance Agent fields
+    session_secret_hash = models.CharField(max_length=64, blank=True, default='')  # SHA256(session_secret)
+    agent_id = models.CharField(max_length=64, blank=True, default='')
     active = models.BooleanField(default=True)
     security_mode = models.CharField(
         max_length=30,
@@ -178,6 +192,10 @@ class AttendanceAttempt(models.Model):
     challenge_expires_at = models.DateTimeField(null=True, blank=True)
     consumed_at = models.DateTimeField(null=True, blank=True)
     failure_reason = models.TextField(null=True, blank=True)
+    # Agent challenge proof fields (set during start_attempt)
+    agent_challenge_nonce = models.CharField(max_length=64, blank=True, null=True)
+    agent_challenge_ts = models.BigIntegerField(null=True, blank=True)
+    agent_proof_verified = models.BooleanField(default=False)
 
     class Meta:
         indexes = [
@@ -269,3 +287,33 @@ class AttendanceSessionAuditRoot(models.Model):
 
     def __str__(self):
         return f"AuditRoot({self.session.course_code}) - Closed: {self.closed}"
+
+
+class AttendanceAgent(models.Model):
+    """
+    Represents a registered professor Attendance Agent instance.
+    Each professor laptop has one agent identity (Ed25519 public key).
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    professor = models.OneToOneField(
+        'User',
+        on_delete=models.CASCADE,
+        related_name='attendance_agent',
+        null=True,
+        blank=True,
+    )
+    agent_id = models.CharField(max_length=64, unique=True, db_index=True)
+    public_key_pem = models.TextField()  # Ed25519 public key in PEM format
+    x25519_public_key_pem = models.TextField(blank=True, default='')  # X25519 key for secret delivery
+    last_heartbeat = models.DateTimeField(null=True, blank=True)
+    registered_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['agent_id']),
+            models.Index(fields=['last_heartbeat']),
+        ]
+
+    def __str__(self):
+        return f"Agent({self.agent_id[:8]}...) - {self.professor.email if self.professor else 'unassigned'}"
