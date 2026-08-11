@@ -59,7 +59,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'core.middleware.HotspotRestrictionMiddleware',
+    # HotspotRestrictionMiddleware removed — network verification handled by Attendance Agent
 ]
 
 ROOT_URLCONF = 'secure_attendance.urls'
@@ -162,3 +162,21 @@ CACHES = {
 
 LIVENESS_VERIFIER_TYPE = os.getenv("LIVENESS_VERIFIER_TYPE", "mediapipe")
 
+# ---------- ATTENDANCE AGENT SETTINGS ----------
+# URL of the local Attendance Agent HTTP server
+# In dev: Agent runs on the same machine as Django (localhost:5000)
+# In production: Agent runs on professor's laptop; Django can be cloud-hosted
+ATTENDANCE_AGENT_URL = os.getenv("ATTENDANCE_AGENT_URL", "http://127.0.0.1:5000")
+
+# Pre-shared bearer token for Django ↔ Agent communication
+# Must match the api_token in attendance_agent.toml / ATTENDANCE_AGENT_API_TOKEN env var on the Agent
+ATTENDANCE_AGENT_API_TOKEN = os.getenv("ATTENDANCE_AGENT_API_TOKEN", "secure_presence_v3_default_token")
+
+# Seconds a challenge nonce is valid (must match Agent's challenge_ttl_seconds)
+ATTENDANCE_AGENT_CHALLENGE_TTL_SECONDS = int(os.getenv("ATTENDANCE_AGENT_CHALLENGE_TTL_SECONDS", "30"))
+
+# Seconds since last heartbeat before Django considers the Agent dead and closes the session
+ATTENDANCE_AGENT_HEARTBEAT_MAX_AGE_SECONDS = int(os.getenv("ATTENDANCE_AGENT_HEARTBEAT_MAX_AGE_SECONDS", "90"))
+
+# Development bypass: if True, agent challenge is optional (useful for unit tests)
+ATTENDANCE_AGENT_DEV_BYPASS = os.getenv("ATTENDANCE_AGENT_DEV_BYPASS", "True") == "True"

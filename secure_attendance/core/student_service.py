@@ -3,7 +3,7 @@ import logging
 import numpy as np
 from typing import Tuple, Optional
 from core.crypto_utils import aes_encrypt
-from core.models import StudentProfile, User
+from core.models import StudentProfile, User, Device
 
 logger = logging.getLogger(__name__)
 
@@ -133,4 +133,16 @@ def revoke_student_face(user: User) -> bool:
     except Exception as e:
         logger.error("Error revoking face for user %s: %s", user.id, e)
         return False
+
+
+def register_device(student: User = None, public_key: str = "", fingerprint_hash: str = "", user: User = None, public_key_pem: str = "", **kwargs) -> Device:
+    """Legacy helper for registering student device."""
+    target_user = student or user
+    key = public_key or public_key_pem
+    return Device.objects.create(
+        student=target_user,
+        public_key=key,
+        fingerprint_hash=fingerprint_hash,
+    )
+
 

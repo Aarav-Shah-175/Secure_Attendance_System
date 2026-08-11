@@ -354,17 +354,61 @@
         // ---------- SECURE ATTENDANCE FLOW & CONTINUOUS HEARTBEAT ----------
         async function submitAttendanceV2(sessionId) {
             const statusEl = document.getElementById("attendanceStatus");
-            statusEl.innerText = "Initializing attempt...";
+            statusEl.innerText = "Fetching local network presence challenge...";
             statusEl.style.color = "#0b5f78";
 
             let heartbeatInterval = null;
 
             try {
+                // Step 0: Fetch Network Challenge from Attendance Agent on LAN in Parallel
+                let agentChallenge = null;
+                const agentEndpoints = [
+                    `http://192.168.137.1:5000/challenge?session_id=${sessionId}`,
+                    `http://127.0.0.1:5000/challenge?session_id=${sessionId}`,
+                    `http://attendance.local:5000/challenge?session_id=${sessionId}`
+                ];
+
+                const fetchSingleEndpoint = async (url) => {
+                    const controller = new AbortController();
+                    const timer = setTimeout(() => controller.abort(), 2500); // 2.5s per request
+                    try {
+                        const res = await fetch(url, { method: "GET", mode: "cors", signal: controller.signal });
+                        clearTimeout(timer);
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data && data.proof) return data;
+                        }
+                        throw new Error(`HTTP ${res.status}`);
+                    } catch (e) {
+                        clearTimeout(timer);
+                        throw e;
+                    }
+                };
+
+                try {
+                    agentChallenge = await Promise.any(agentEndpoints.map(url => fetchSingleEndpoint(url)));
+                } catch (e) {
+                    console.warn("Could not obtain Attendance Agent challenge from any candidate LAN URL:", e);
+                }
+
+                if (!agentChallenge || !agentChallenge.proof) {
+                    console.warn("Could not obtain Attendance Agent challenge from local network.");
+                }
+
                 // Step 1: Start attempt
+                statusEl.innerText = "Initializing attempt...";
+                const startPayload = {
+                    session_id: sessionId,
+                    agent_nonce: agentChallenge ? agentChallenge.nonce : "",
+                    agent_timestamp: agentChallenge ? agentChallenge.timestamp : 0,
+                    agent_proof: agentChallenge ? agentChallenge.proof : "",
+                    agent_sig: agentChallenge ? agentChallenge.agent_sig : ""
+                };
+
                 const startRes = await fetch("/student/secure-v2/start-attempt/", {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
-                    body: JSON.stringify({ session_id: sessionId })
+                    body: JSON.stringify(startPayload)
                 });
                 const startData = await startRes.json();
                 if (startData.status !== "success") {
@@ -671,10 +715,10 @@
 
                     if (challengeType === "left") {
                         conditionMet = noseRatio < 0.30;
-                        statusEl.innerText = conditionMet ? "Hold posture... ⏱️" : "Turn your head LEFT 👈";
+                        statusEl.innerText = conditionMet ? "Hold posture... ⏱️" : "Turn your head RIGHT 👉";
                     } else if (challengeType === "right") {
                         conditionMet = noseRatio > 0.65;
-                        statusEl.innerText = conditionMet ? "Hold posture... ⏱️" : "Turn your head RIGHT 👉";
+                        statusEl.innerText = conditionMet ? "Hold posture... ⏱️" : "Turn your head LEFT 👈";
                     } else if (challengeType === "straight") {
                         conditionMet = (noseRatio >= 0.30 && noseRatio <= 0.65);
                         statusEl.innerText = conditionMet ? "Hold posture... ⏱️" : "Look straight at camera 👁️";

@@ -34,4 +34,9 @@ urlpatterns = [
     path('student/secure-v2/verify-liveness/', views.verify_liveness_v2_view, name='verify_liveness_v2'),
     path('student/secure-v2/request-challenge/', views.passkey_authenticate_options_view, name='passkey_authenticate_options'),
     path('student/secure-v2/submit/', views.submit_attendance_v2_view, name='submit_attendance_v2'),
+
+    # Attendance Agent control endpoints
+    path('agent/register/', views.agent_register_view, name='agent_register'),
+    path('agent/heartbeat/', views.agent_heartbeat_view, name='agent_heartbeat'),
+    path('agent/stop-session/', views.agent_stop_session_view, name='agent_stop_session'),
 ]

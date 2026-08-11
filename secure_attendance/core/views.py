@@ -16,6 +16,7 @@ from core.models import (
     AttendanceRecord,
     PasskeyCredential,
     AttendanceAttempt,
+    AttendanceAgent,
     SecurityMode
 )
 from core.session_service import create_attendance_session
@@ -64,6 +65,7 @@ from core.models import (
     AttendanceRecord,
     PasskeyCredential,
     AttendanceAttempt,
+    AttendanceAgent,
     SecurityMode,
     StudentProfile
 )
@@ -89,6 +91,7 @@ from core.webauthn_service import (
 )
 from core.audit_service import verify_v2_session_integrity, close_session_audit_root
 from core.liveness_challenge_service import issue_liveness_challenge, verify_liveness_nonce
+from core.agent_verification import verify_agent_challenge
 
 logger = logging.getLogger(__name__)
 
@@ -222,36 +225,12 @@ def start_session(request):
         course_code = request.POST.get("course_code")
         security_mode = SecurityMode.SECURE_PRESENCE_V2
 
-        import socket
-        gateway_ip = None
-        try:
-            for info in socket.getaddrinfo(socket.gethostname(), None):
-                addr = info[4][0]
-                try:
-                    parsed = ipaddress.ip_address(addr)
-                    if not parsed.is_loopback and parsed.version == 4:
-                        if str(parsed).startswith("192.168.137."):
-                            gateway_ip = str(parsed)
-                            break
-                        elif gateway_ip is None:
-                            gateway_ip = str(parsed)
-                except ValueError:
-                    continue
-        except Exception:
-            pass
-
-        if not gateway_ip:
-            gateway_ip = request.META.get("SERVER_ADDR") or request.META.get("REMOTE_ADDR", "127.0.0.1")
-
-        network = ipaddress.ip_network(gateway_ip + "/24", strict=False)
-        subnet_range = str(network)
-
+        # Network detection removed — Attendance Agent handles all network verification.
+        # Session is created; Agent receives session_secret via /start-session push.
         create_attendance_session(
             professor=request.user,
             course_code=course_code,
-            gateway_ip=gateway_ip,
-            subnet_range=subnet_range,
-            security_mode=security_mode
+            security_mode=security_mode,
         )
         return redirect("teacher_dashboard")
 
@@ -570,10 +549,20 @@ def start_attempt_v2_view(request):
         session_id = data.get("session_id")
         client_ip = request.META.get("REMOTE_ADDR")
 
+        # Agent challenge fields (from student browser after fetching from Agent HTTP endpoint)
+        agent_nonce = data.get("agent_nonce", "")
+        agent_timestamp = int(data.get("agent_timestamp", 0))
+        agent_proof = data.get("agent_proof", "")
+        agent_sig = data.get("agent_sig", "")
+
         success, attempt, message = start_attendance_attempt(
             user=request.user,
             session_id=session_id,
-            client_ip=client_ip
+            client_ip=client_ip,
+            agent_nonce=agent_nonce,
+            agent_timestamp=agent_timestamp,
+            agent_proof=agent_proof,
+            agent_sig=agent_sig,
         )
         if success:
             return JsonResponse({
@@ -738,3 +727,101 @@ def revoke_passkey_v2_view(request, passkey_id):
         passkey.save(update_fields=['revoked'])
 
     return redirect("teacher_dashboard")
+
+
+# ---------- ATTENDANCE AGENT API VIEWS ----------
+# These endpoints are called by the Attendance Agent, not by browsers.
+# Protected by pre-shared bearer token (ATTENDANCE_AGENT_API_TOKEN).
+
+def _require_agent_token(request) -> bool:
+    """Return True if the request carries the valid agent bearer token."""
+    from django.conf import settings as _s
+    token = _s.ATTENDANCE_AGENT_API_TOKEN
+    if not token:
+        return False
+    auth = request.headers.get("Authorization", "")
+    return auth == f"Bearer {token}"
+
+
+def agent_register_view(request):
+    """
+    POST /agent/register/
+    Agent registers its Ed25519 public key with Django.
+    Body: { agent_id, public_key_pem }
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not _require_agent_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+        agent_id = body["agent_id"]
+        public_key_pem = body["public_key_pem"]
+    except (KeyError, json.JSONDecodeError) as e:
+        return JsonResponse({"error": f"Invalid payload: {e}"}, status=400)
+
+    agent_record, created = AttendanceAgent.objects.update_or_create(
+        agent_id=agent_id,
+        defaults={"public_key_pem": public_key_pem},
+    )
+    action = "registered" if created else "updated"
+    logger.info("Attendance Agent %s: agent_id=%s", action, agent_id[:8])
+    return JsonResponse({"status": "ok", "action": action, "agent_id": agent_id})
+
+
+def agent_heartbeat_view(request):
+    """
+    POST /agent/heartbeat/
+    Agent sends a heartbeat for an active session.
+    Body: { agent_id, session_id, alive }
+    If heartbeat stops arriving, Django auto-closes the session.
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not _require_agent_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+        agent_id = body["agent_id"]
+        session_id = body["session_id"]
+    except (KeyError, json.JSONDecodeError) as e:
+        return JsonResponse({"error": f"Invalid payload: {e}"}, status=400)
+
+    # Update heartbeat timestamp on agent record
+    agent_record = AttendanceAgent.objects.filter(agent_id=agent_id).first()
+    if agent_record:
+        agent_record.last_heartbeat = timezone.now()
+        agent_record.save(update_fields=["last_heartbeat"])
+
+    # Update session agent_id if not set
+    session = AttendanceSession.objects.filter(id=session_id, active=True).first()
+    if session:
+        if not session.agent_id:
+            session.agent_id = agent_id
+            session.save(update_fields=["agent_id"])
+
+    return JsonResponse({"status": "ok", "session_id": session_id})
+
+
+def agent_stop_session_view(request):
+    """
+    POST /agent/stop-session/
+    Agent or Django closes a session explicitly.
+    Body: { session_id }
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not _require_agent_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    try:
+        body = json.loads(request.body.decode("utf-8"))
+        session_id = body["session_id"]
+    except (KeyError, json.JSONDecodeError) as e:
+        return JsonResponse({"error": f"Invalid payload: {e}"}, status=400)
+
+    updated = AttendanceSession.objects.filter(id=session_id, active=True).update(active=False)
+    logger.info("Agent stop-session: session_id=%s updated=%d", session_id, updated)
+    return JsonResponse({"status": "ok", "session_id": session_id, "closed": bool(updated)})
