@@ -37,7 +37,7 @@ CHALLENGES = [
 ]
 
 NONCE_TTL_SECONDS = 60   # nonce valid for 60 seconds
-TIME_LIMIT_SECONDS = 7   # time given to student to complete challenge
+TIME_LIMIT_SECONDS = 30   # time given to student to complete challenge
 
 
 def _get_secret() -> bytes:
