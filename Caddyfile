@@ -1,0 +1,6 @@
+# Caddyfile for WebAuthn HTTPS SSL Termination
+# Replace 192-168-137-1.sslip.io with your actual domain or Elastic IP domain
+
+192-168-137-1.sslip.io {
+    reverse_proxy web:8000
+}
