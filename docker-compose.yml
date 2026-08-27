@@ -20,6 +20,7 @@ services:
       - WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME:-Secure Attendance System}
       - WEBAUTHN_ORIGIN=${WEBAUTHN_ORIGIN:-https://192-168-137-1.sslip.io:8000}
     ports:
+      - "80:8000"
       - "8000:8000"
     depends_on:
       db:
