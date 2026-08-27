@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: secure_attendance/Dockerfile
+    container_name: secure_attendance_web
+    restart: always
+    environment:
+      - DEBUG=False
+      - DB_HOST=db
+      - DB_NAME=${DB_NAME:-attendance_db}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-secure_presence_v3_pass}
+      - DB_PORT=5432
+      - SECURE_PRESENCE_V2_ENABLED=True
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-production-key-must-be-changed-in-env}
+      - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-192-168-137-1.sslip.io}
+      - WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME:-Secure Attendance System}
+      - WEBAUTHN_ORIGIN=${WEBAUTHN_ORIGIN:-https://192-168-137-1.sslip.io:8000}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - static_volume:/app/secure_attendance/static
+      - media_volume:/app/secure_attendance/embeddings
+
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: secure_attendance_db
+    restart: always
+    environment:
+      - POSTGRES_DB=${DB_NAME:-attendance_db}
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-secure_presence_v3_pass}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-attendance_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  static_volume:
+  media_volume:
