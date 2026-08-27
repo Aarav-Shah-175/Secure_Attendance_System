@@ -1,6 +1,7 @@
-# Caddyfile for WebAuthn HTTPS SSL Termination
-# Replace 192-168-137-1.sslip.io with your actual domain or Elastic IP domain
+# Caddyfile for automatic Let's Encrypt HTTPS SSL Termination
+# Enables native WebAuthn (Passkeys / Face ID / Touch ID) compliance
 
-192-168-137-1.sslip.io {
+{$WEBAUTHN_RP_ID:13-127-69-218.sslip.io} {
     reverse_proxy web:8000
 }
+

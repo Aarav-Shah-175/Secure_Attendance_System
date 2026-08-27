@@ -16,11 +16,10 @@ services:
       - DB_PORT=5432
       - SECURE_PRESENCE_V2_ENABLED=True
       - SECRET_KEY=${SECRET_KEY:-django-insecure-production-key-must-be-changed-in-env}
-      - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-192-168-137-1.sslip.io}
+      - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-13-127-69-218.sslip.io}
       - WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME:-Secure Attendance System}
-      - WEBAUTHN_ORIGIN=${WEBAUTHN_ORIGIN:-https://192-168-137-1.sslip.io:8000}
+      - WEBAUTHN_ORIGIN=${WEBAUTHN_ORIGIN:-https://13-127-69-218.sslip.io}
     ports:
-      - "80:8000"
       - "8000:8000"
     depends_on:
       db:
@@ -47,7 +46,25 @@ services:
       timeout: 5s
       retries: 5
 
+  caddy:
+    image: caddy:2-alpine
+    container_name: secure_attendance_caddy
+    restart: always
+    environment:
+      - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-13-127-69-218.sslip.io}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
 volumes:
   postgres_data:
   static_volume:
   media_volume:
+  caddy_data:
+  caddy_config:
