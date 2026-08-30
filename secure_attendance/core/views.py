@@ -96,6 +96,30 @@ from core.agent_verification import verify_agent_challenge
 logger = logging.getLogger(__name__)
 
 
+def custom_csrf_failure(request, reason=""):
+    origin = request.META.get('HTTP_ORIGIN', 'None')
+    referer = request.META.get('HTTP_REFERER', 'None')
+    host = request.get_host()
+    scheme = request.scheme
+    cookie_present = 'csrftoken' in request.COOKIES
+    logger.error("CSRF FAILURE: reason='%s', path='%s', origin='%s', referer='%s', host='%s', scheme='%s', cookie='%s'",
+                 reason, request.path, origin, referer, host, scheme, cookie_present)
+    
+    return HttpResponse(
+        f"<h1>Forbidden (403) - CSRF Verification Failed</h1>"
+        f"<p><strong>Diagnostic Reason:</strong> {reason}</p>"
+        f"<ul>"
+        f"<li><strong>Request Scheme:</strong> {scheme}</li>"
+        f"<li><strong>Request Host:</strong> {host}</li>"
+        f"<li><strong>Origin Header:</strong> {origin}</li>"
+        f"<li><strong>Referer Header:</strong> {referer}</li>"
+        f"<li><strong>CSRF Cookie Present:</strong> {cookie_present}</li>"
+        f"</ul>"
+        f"<hr><p>Secure Attendance System CSRF Diagnostic View</p>",
+        status=403
+    )
+
+
 # ---------- AUTH & DASHBOARD VIEWS ----------
 
 @rate_limit_request(key_prefix="login", limit=10, window_seconds=60)

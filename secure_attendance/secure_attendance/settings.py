@@ -81,6 +81,8 @@ USE_X_FORWARDED_PORT = True
 # Ensure CSRF cookies work seamlessly across HTTP & HTTPS proxies
 CSRF_COOKIE_SECURE = False
 SESSION_COOKIE_SECURE = False
+CSRF_FAILURE_VIEW = 'core.views.custom_csrf_failure'
+
 
 
 

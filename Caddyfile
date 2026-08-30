@@ -2,6 +2,12 @@
 # Enables native WebAuthn (Passkeys / Face ID / Touch ID) compliance
 
 {$WEBAUTHN_RP_ID:13-127-69-218.sslip.io} {
-    reverse_proxy web:8000
+    reverse_proxy web:8000 {
+        header_up Host {http.request.host}
+        header_up X-Forwarded-Host {http.request.host}
+        header_up X-Forwarded-Proto https
+        header_up X-Forwarded-Port 443
+    }
 }
+
 
