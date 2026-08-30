@@ -41,6 +41,14 @@ CSRF_TRUSTED_ORIGINS = [
     "http://*.sslip.io",
     "https://*.sslip.io:8000",
     "http://*.sslip.io:8000",
+    "https://13-127-69-218.sslip.io",
+    "http://13-127-69-218.sslip.io",
+    "https://13-127-69-218.sslip.io:8000",
+    "http://13-127-69-218.sslip.io:8000",
+    "https://13.127.69.218",
+    "http://13.127.69.218",
+    "https://13.127.69.218:8000",
+    "http://13.127.69.218:8000",
     "https://127.0.0.1",
     "http://127.0.0.1",
     "https://localhost",
@@ -69,6 +77,11 @@ CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(CSRF_TRUSTED_ORIGINS))
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 USE_X_FORWARDED_HOST = True
 USE_X_FORWARDED_PORT = True
+
+# Ensure CSRF cookies work seamlessly across HTTP & HTTPS proxies
+CSRF_COOKIE_SECURE = False
+SESSION_COOKIE_SECURE = False
+
 
 
 
