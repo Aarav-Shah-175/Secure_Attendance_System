@@ -23,6 +23,7 @@ services:
       db:
         condition: service_healthy
     volumes:
+      - ./secure_attendance:/app/secure_attendance
       - static_volume:/app/secure_attendance/static
       - media_volume:/app/secure_attendance/embeddings
 
