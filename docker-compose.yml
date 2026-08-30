@@ -6,7 +6,7 @@ services:
     container_name: secure_attendance_web
     restart: always
     environment:
-      - DEBUG=False
+      - DEBUG=${DEBUG:-False}
       - DB_HOST=db
       - DB_NAME=${DB_NAME:-attendance_db}
       - DB_USER=${DB_USER:-postgres}
