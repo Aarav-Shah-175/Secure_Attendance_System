@@ -84,11 +84,21 @@ def verify_signature(public_key_pem, message_bytes, signed_nonce):
 
 # ---------- AES-256-GCM ENCRYPTION ----------
 
-def aes_encrypt(plaintext: bytes):
+def _get_aes_key() -> bytes:
     key_str = os.getenv("AES_MASTER_KEY")
     if not key_str:
         raise ValueError("AES_MASTER_KEY is not set in environment.")
-    key = base64.b64decode(key_str)
+    try:
+        key = base64.b64decode(key_str)
+        if len(key) == 32:
+            return key
+    except Exception:
+        pass
+    return hashlib.sha256(key_str.encode("utf-8")).digest()
+
+
+def aes_encrypt(plaintext: bytes):
+    key = _get_aes_key()
     aesgcm = AESGCM(key)
 
     nonce = os.urandom(12)
@@ -98,10 +108,7 @@ def aes_encrypt(plaintext: bytes):
 
 
 def aes_decrypt(ciphertext_b64: str):
-    key_str = os.getenv("AES_MASTER_KEY")
-    if not key_str:
-        raise ValueError("AES_MASTER_KEY is not set in environment.")
-    key = base64.b64decode(key_str)
+    key = _get_aes_key()
     data = base64.b64decode(ciphertext_b64)
 
     nonce = data[:12]
