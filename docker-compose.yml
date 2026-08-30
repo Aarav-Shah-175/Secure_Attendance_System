@@ -14,6 +14,7 @@ services:
       - DB_PORT=5432
       - SECURE_PRESENCE_V2_ENABLED=True
       - SECRET_KEY=${SECRET_KEY:-django-insecure-production-key-must-be-changed-in-env}
+      - AES_MASTER_KEY=${AES_MASTER_KEY:-dev-aes-master-key-32bytes-long!}
       - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-13-127-69-218.sslip.io}
       - WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME:-Secure Attendance System}
       - WEBAUTHN_ORIGIN=${WEBAUTHN_ORIGIN:-https://13-127-69-218.sslip.io}
