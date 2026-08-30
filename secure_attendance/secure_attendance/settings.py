@@ -35,6 +35,28 @@ ALLOWED_HOSTS = ["*", "localhost",
     "127.0.0.1",
     "192.168.137.1",]
 
+# CSRF Trusted Origins for Cloud Reverse Proxy & WebAuthn
+CSRF_TRUSTED_ORIGINS = [
+    "https://*.sslip.io",
+    "http://*.sslip.io",
+    "https://*.sslip.io:8000",
+    "http://*.sslip.io:8000",
+    "https://127.0.0.1",
+    "http://127.0.0.1",
+]
+env_origin = os.getenv("WEBAUTHN_ORIGIN")
+if env_origin and env_origin not in CSRF_TRUSTED_ORIGINS:
+    CSRF_TRUSTED_ORIGINS.append(env_origin)
+
+env_csrf = os.getenv("CSRF_TRUSTED_ORIGINS")
+if env_csrf:
+    CSRF_TRUSTED_ORIGINS.extend([origin.strip() for origin in env_csrf.split(",") if origin.strip()])
+
+# Reverse Proxy settings for Caddy / Nginx SSL Termination
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
+
 
 # Application definition
 
