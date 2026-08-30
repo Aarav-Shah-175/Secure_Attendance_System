@@ -140,34 +140,71 @@ print('Student account created!')
 2. Click **Start New Session**.
 3. Enter the **Course Code** (e.g. `CS101 - Operating Systems`).
 4. Click **Start Session**.
-5. The **Active Session Dashboard** displays the live QR code, session countdown, and real-time student count.
+5. Django generates a 256-bit `session_secret` and binds it to the active course session.
 
 ---
 
-### Step B: Attendance Agent Proximity Check (Optional)
-If running the Attendance Agent on the classroom Wi-Fi network:
-```bash
-python attendance_agent/agent.py
-```
-The agent holds an in-memory HMAC-SHA256 secret to verify that students are physically inside the classroom network.
+### Step B: Running Network Verification (Choose Mode 1 or Mode 2)
+
+To ensure students in Room 101 cannot mark attendance for Professor B in Room 102, choose one of the network verification options:
+
+#### Mode 1: Standalone Attendance Agent Mode (Recommended for Wi-Fi / Hotspots)
+The **Attendance Agent** runs on the professor's laptop or classroom router to issue signed HMAC-SHA256 network nonces.
+
+1. On the Professor's laptop (connected to classroom Wi-Fi / hotspot), navigate to the project directory:
+   ```bash
+   cd attendance_agent
+   ```
+2. Set the Agent API token in environment / `.env`:
+   ```bash
+   # Windows (PowerShell)
+   $env:ATTENDANCE_AGENT_API_TOKEN="secure_presence_v3_default_token"
+   $env:DJANGO_BACKEND_URL="https://13-127-69-218.sslip.io"
+
+   # Linux / Mac
+   export ATTENDANCE_AGENT_API_TOKEN="secure_presence_v3_default_token"
+   export DJANGO_BACKEND_URL="https://13-127-69-218.sslip.io"
+   ```
+3. Start the Attendance Agent:
+   ```bash
+   python agent.py
+   ```
+   *The Agent runs on `http://127.0.0.1:5000` (or local IP) and receives the active `session_secret` pushed by Django.*
+
+---
+
+#### Mode 2: IP Subnet Range Matching Mode (Traditional Subnet Filter)
+If the classroom has a dedicated static IP subnet (e.g. `192.168.1.0/24`):
+1. In `core/attendance_service.py`, `verify_network(student_ip, session)` checks if the student's incoming IP address falls strictly within `session.subnet_range` and matches `session.gateway_ip`.
+2. Students outside the classroom IP range are rejected with **"Network Verification Failed — You are not connected to the classroom Wi-Fi."**
+
+---
+
+### Multi-Teacher Session Isolation Principle
+
+When **Professor A (Room 101 - CS101)** and **Professor B (Room 102 - CS102)** run simultaneous sessions:
+
+* **Session Secret Isolation**: Session `CS101` is cryptographically bound to Room 101's Agent / Subnet. Session `CS102` is bound to Room 102's Agent / Subnet.
+* **Attempt Rejection**: If Student 1 (in Room 101) attempts to submit attendance for `CS102`, Student 1's phone requests an HMAC proof from Room 101's Agent. When submitted to AWS, Django compares Room 101's proof against `CS102`'s session secret hash. **The check fails and REJECTS Student 1 immediately.**
 
 ---
 
 ### Step C: Student Submits Attendance (Mobile Phone)
 
 1. Student opens `https://13-127-69-218.sslip.io` on Safari (iOS) or Chrome (Android).
-2. Click **Mark Attendance** under the active course session (`CS101`).
-3. **Stage 1 — MediaPipe Liveness**:
-   - The browser opens camera feed.
-   - Student aligns face in the center guide circle.
-   - MediaPipe FaceMesh tracks 468 30-FPS facial landmarks to verify genuine human liveness (gesture & blink check).
+2. Click **Mark Attendance** under their active course session (`CS101`).
+3. **Stage 1 — MediaPipe Liveness Check**:
+   - Camera opens. Student aligns face in the center circle.
+   - MediaPipe FaceMesh tracks 468 30-FPS facial landmarks to verify genuine human liveness.
 4. **Stage 2 — PyTorch Face Matching**:
-   - A face snapshot is sent to Gunicorn on EC2.
-   - FaceNet compares the snapshot embedding against the student's enrolled profile embedding.
-5. **Stage 3 — Passkey Verification**:
-   - Phone prompts **Face ID / Touch ID**.
-6. **Attendance Accepted!**:
-   - The server appends a tamper-evident SHA-256 chained hash to PostgreSQL (`chained_hash = SHA256(record_hash + previous_hash)`).
+   - Snapshot frame sent to EC2 Gunicorn.
+   - FaceNet compares the snapshot embedding against the student's enrolled 512-dim `.npy` profile embedding (~15-25ms).
+5. **Stage 3 — Biometric Passkey Verification**:
+   - Phone prompts **Face ID / Touch ID / Fingerprint**.
+6. **Stage 4 — Network Proof Verification**:
+   - Browser submits the Attendance Agent HMAC nonce proof / IP check to Django.
+7. **Attendance Accepted!**:
+   - Server appends a tamper-evident SHA-256 chained hash to PostgreSQL (`chained_hash = SHA256(record_hash + previous_hash)`).
    - Student sees **"Attendance Recorded Successfully"** green checkmark.
 
 ---
