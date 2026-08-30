@@ -4,11 +4,11 @@ import base64
 import csv
 import logging
 import ipaddress
-from django.shortcuts import render, redirect
-from django.contrib.auth import authenticate, login, logout
-from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse, HttpResponse
-from django.utils import timezone
+from django.shortcuts import render, redirect #type: ignore
+from django.contrib.auth import authenticate, login, logout #type: ignore
+from django.contrib.auth.decorators import login_required #type: ignore
+from django.http import JsonResponse, HttpResponse #type: ignore
+from django.utils import timezone #type: ignore
 from openpyxl import Workbook
 
 from core.models import (
@@ -52,11 +52,11 @@ import csv
 import logging
 import ipaddress
 from datetime import timedelta
-from django.shortcuts import render, redirect
-from django.contrib.auth import authenticate, login, logout
-from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse, HttpResponse
-from django.utils import timezone
+from django.shortcuts import render, redirect #type: ignore
+from django.contrib.auth import authenticate, login, logout #type: ignore
+from django.contrib.auth.decorators import login_required #type: ignore
+from django.http import JsonResponse, HttpResponse #type: ignore
+from django.utils import timezone #type: ignore
 from openpyxl import Workbook
 
 from core.models import (
@@ -417,9 +417,9 @@ def register_face(request):
         image_data = data["image"].split(",")[1]
         image_bytes = base64.b64decode(image_data)
 
-        import cv2
+        import cv2 #type: ignore
         import numpy as np
-        from PIL import Image
+        from PIL import Image #type: ignore
 
         mtcnn, resnet = get_face_models()
 
@@ -436,7 +436,7 @@ def register_face(request):
         if face is None:
             return JsonResponse({"status": "fail", "message": "No face detected in frame. Align face clearly."})
 
-        import torch
+        import torch #type: ignore
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         face_tensor = face.unsqueeze(0).to(device)
 
@@ -467,9 +467,9 @@ def face_verify(request):
         image_data = data["image"].split(",")[1]
         image_bytes = base64.b64decode(image_data)
 
-        import cv2
+        import cv2 #type: ignore
         import numpy as np
-        from PIL import Image
+        from PIL import Image #type: ignore
 
         mtcnn, resnet = get_face_models()
 
@@ -486,7 +486,7 @@ def face_verify(request):
         if face is None:
             return JsonResponse({"status": "fail", "message": "No face detected"})
 
-        import torch
+        import torch #type: ignore
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         face_tensor = face.unsqueeze(0).to(device)
 
@@ -759,7 +759,7 @@ def revoke_passkey_v2_view(request, passkey_id):
 
 def _require_agent_token(request) -> bool:
     """Return True if the request carries the valid agent bearer token."""
-    from django.conf import settings as _s
+    from django.conf import settings as _s #type: ignore
     token = _s.ATTENDANCE_AGENT_API_TOKEN
     if not token:
         return False
