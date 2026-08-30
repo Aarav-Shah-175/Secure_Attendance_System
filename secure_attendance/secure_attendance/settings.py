@@ -43,19 +43,33 @@ CSRF_TRUSTED_ORIGINS = [
     "http://*.sslip.io:8000",
     "https://127.0.0.1",
     "http://127.0.0.1",
+    "https://localhost",
+    "http://localhost",
 ]
-env_origin = os.getenv("WEBAUTHN_ORIGIN")
-if env_origin and env_origin not in CSRF_TRUSTED_ORIGINS:
-    CSRF_TRUSTED_ORIGINS.append(env_origin)
 
-env_csrf = os.getenv("CSRF_TRUSTED_ORIGINS")
-if env_csrf:
-    CSRF_TRUSTED_ORIGINS.extend([origin.strip() for origin in env_csrf.split(",") if origin.strip()])
+for env_key in ["WEBAUTHN_ORIGIN", "WEBAUTHN_RP_ID", "CSRF_TRUSTED_ORIGINS"]:
+    val = os.getenv(env_key)
+    if val:
+        for item in val.split(","):
+            item = item.strip()
+            if item:
+                if not item.startswith("http://") and not item.startswith("https://"):
+                    CSRF_TRUSTED_ORIGINS.extend([
+                        f"https://{item}",
+                        f"http://{item}",
+                        f"https://{item}:8000",
+                        f"http://{item}:8000",
+                    ])
+                else:
+                    CSRF_TRUSTED_ORIGINS.append(item)
+
+CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(CSRF_TRUSTED_ORIGINS))
 
 # Reverse Proxy settings for Caddy / Nginx SSL Termination
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 USE_X_FORWARDED_HOST = True
 USE_X_FORWARDED_PORT = True
+
 
 
 # Application definition
