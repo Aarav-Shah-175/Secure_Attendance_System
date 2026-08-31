@@ -87,7 +87,7 @@ def load_config(config_path: Optional[str] = None) -> AgentConfig:
         port=int(os.getenv("AGENT_PORT", agent_sec.get("port", 5000))),
         host=os.getenv("AGENT_HOST", agent_sec.get("host", "0.0.0.0")),
         hotspot_ip=os.getenv("AGENT_HOTSPOT_IP", agent_sec.get("hotspot_ip", "192.168.137.1")),
-        django_url=os.getenv("DJANGO_URL", django_sec.get("url", "https://192-168-137-1.sslip.io:8000")),
+        django_url=os.getenv("DJANGO_URL", django_sec.get("url", "https://13-127-69-218.sslip.io")),
         api_token=os.getenv("ATTENDANCE_AGENT_API_TOKEN", django_sec.get("api_token", "secure_presence_v3_default_token")),
         verify_ssl=os.getenv("DJANGO_VERIFY_SSL", str(django_sec.get("verify_ssl", False))).lower() == "true",
         key_dir=Path(os.getenv("AGENT_KEY_DIR", agent_sec.get("key_dir", str(Path.home() / ".secure_attendance")))),
