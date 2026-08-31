@@ -104,7 +104,7 @@ class AttendanceAgent:
                 logger.info("Agent registered with Django successfully.")
                 return True
             else:
-                logger.error("Django registration failed: %s %s", resp.status_code, resp.text)
+                logger.error("Django registration failed (HTTP %s)", resp.status_code)
                 return False
         except Exception as exc:
             logger.error("Django registration request failed: %s", exc)

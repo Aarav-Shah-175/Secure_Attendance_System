@@ -114,10 +114,7 @@ class HeartbeatSender(threading.Thread):
                 if resp.status_code == 200:
                     logger.debug("Heartbeat OK for session %s", session_id)
                 else:
-                    logger.warning(
-                        "Heartbeat rejected for session %s: %s %s",
-                        session_id, resp.status_code, resp.text[:120],
-                    )
+                    logger.warning("Heartbeat rejected for session %s (HTTP %s)", session_id[:8], resp.status_code)
             except requests.exceptions.ConnectionError:
                 logger.warning("Heartbeat: Django unreachable (session %s)", session_id)
             except Exception as exc:
