@@ -39,4 +39,5 @@ urlpatterns = [
     path('agent/register/', views.agent_register_view, name='agent_register'),
     path('agent/heartbeat/', views.agent_heartbeat_view, name='agent_heartbeat'),
     path('agent/stop-session/', views.agent_stop_session_view, name='agent_stop_session'),
+    path('agent/sync/', views.agent_sync_view, name='agent_sync'),
 ]

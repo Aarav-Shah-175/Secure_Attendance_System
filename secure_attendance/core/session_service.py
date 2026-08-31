@@ -114,6 +114,9 @@ def create_attendance_session(
         security_mode=security_mode,
     )
 
+    from django.core.cache import cache
+    cache.set(f"session_secret:{session_id}", session_secret_hex, timeout=3600)
+
     # Push session_secret to the Agent
     _push_secret_to_agent(session, session_secret_hex, expiry)
 

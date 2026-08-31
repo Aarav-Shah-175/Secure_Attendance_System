@@ -30,6 +30,7 @@ class HeartbeatSender(threading.Thread):
         interval_seconds: int = 30,
         verify_ssl: bool = False,
         register_func=None,    # optional callable -> bool
+        agent_instance=None,   # optional AttendanceAgent instance for session sync
     ) -> None:
         super().__init__(name="AgentHeartbeat", daemon=True)
         self._django_url = django_url.rstrip("/")
@@ -39,6 +40,7 @@ class HeartbeatSender(threading.Thread):
         self._interval = interval_seconds
         self._verify_ssl = verify_ssl
         self._register_func = register_func
+        self._agent_instance = agent_instance
         self._registered = False
         self._stop_event = threading.Event()
 
@@ -63,10 +65,34 @@ class HeartbeatSender(threading.Thread):
                 except Exception as exc:
                     logger.debug("Retry registration failed: %s", exc)
 
-            self._send_heartbeat()
+            self._sync_and_heartbeat()
         logger.info("Heartbeat sender stopped.")
 
-    def _send_heartbeat(self) -> None:
+    def _sync_and_heartbeat(self) -> None:
+        # 1. Sync active session secrets from Django
+        sync_url = f"{self._django_url}/agent/sync/"
+        try:
+            sync_resp = requests.post(
+                sync_url,
+                json={"agent_id": self._agent_id},
+                headers={"Authorization": f"Bearer {self._api_token}"},
+                verify=self._verify_ssl,
+                timeout=5,
+            )
+            if sync_resp.status_code == 200:
+                data = sync_resp.json()
+                for s in data.get("sessions", []):
+                    sess_id = s.get("session_id")
+                    sec_hex = s.get("session_secret_hex")
+                    exp = s.get("expires_at", time.time() + 1800)
+                    if sess_id and sec_hex and self._agent_instance:
+                        if not self._agent_instance.get_active_session(sess_id):
+                            self._agent_instance.start_session(sess_id, sec_hex, exp)
+                            logger.info("Synced active session %s from Django", sess_id[:8])
+        except Exception as e:
+            logger.debug("Session sync error: %s", e)
+
+        # 2. Send heartbeat for active sessions
         active_sessions = self._get_active_sessions()
         if not active_sessions:
             return  # Nothing to ping

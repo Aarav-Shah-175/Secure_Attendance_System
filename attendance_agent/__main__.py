@@ -71,6 +71,7 @@ def main() -> None:
         interval_seconds=config.heartbeat_interval_seconds,
         verify_ssl=config.verify_ssl,
         register_func=agent.register_with_django,
+        agent_instance=agent,
     )
     heartbeat.start()
     logger.info("Heartbeat thread started (interval=%ds).", config.heartbeat_interval_seconds)

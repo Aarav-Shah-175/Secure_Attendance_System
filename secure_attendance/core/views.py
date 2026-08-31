@@ -825,3 +825,34 @@ def agent_stop_session_view(request):
     updated = AttendanceSession.objects.filter(id=session_id, active=True).update(active=False)
     logger.info("Agent stop-session: session_id=%s updated=%d", session_id, updated)
     return JsonResponse({"status": "ok", "session_id": session_id, "closed": bool(updated)})
+
+
+def agent_sync_view(request):
+    """
+    POST /agent/sync/
+    Attendance Agent pings Django to fetch active sessions and secrets.
+    Body: { agent_id }
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not _require_agent_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    from django.core.cache import cache
+    active_sessions = AttendanceSession.objects.filter(
+        active=True,
+        expiry__gt=timezone.now()
+    )
+
+    session_list = []
+    for s in active_sessions:
+        secret_hex = cache.get(f"session_secret:{s.id}", "")
+        session_list.append({
+            "session_id": str(s.id),
+            "session_secret_hex": secret_hex,
+            "expires_at": s.expiry.timestamp(),
+            "course_code": s.course_code,
+            "agent_id": s.agent_id,
+        })
+
+    return JsonResponse({"status": "ok", "sessions": session_list})

@@ -375,8 +375,12 @@
                 const agentEndpoints = [
                     `http://192.168.137.1:5000/challenge?session_id=${sessionId}`,
                     `http://127.0.0.1:5000/challenge?session_id=${sessionId}`,
+                    `http://192.168.1.1:5000/challenge?session_id=${sessionId}`,
                     `http://attendance.local:5000/challenge?session_id=${sessionId}`
                 ];
+                if (window.discoveredAgentBaseUrl) {
+                    agentEndpoints.unshift(`${window.discoveredAgentBaseUrl}/challenge?session_id=${sessionId}`);
+                }
 
                 const fetchSingleEndpoint = async (url) => {
                     const controller = new AbortController();
@@ -824,6 +828,7 @@
                     clearTimeout(timeoutId);
                     if (res.ok) {
                         activeAgentData = await res.json();
+                        window.discoveredAgentBaseUrl = url.replace("/status", "");
                         break;
                     }
                 } catch (e) {}
