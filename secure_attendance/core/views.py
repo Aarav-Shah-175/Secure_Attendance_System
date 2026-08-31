@@ -9,6 +9,7 @@ from django.contrib.auth import authenticate, login, logout #type: ignore
 from django.contrib.auth.decorators import login_required #type: ignore
 from django.http import JsonResponse, HttpResponse #type: ignore
 from django.utils import timezone #type: ignore
+from django.views.decorators.csrf import csrf_exempt
 from openpyxl import Workbook
 
 from core.models import (
@@ -743,6 +744,7 @@ def _require_agent_token(request) -> bool:
     return auth == f"Bearer {token}"
 
 
+@csrf_exempt
 def agent_register_view(request):
     """
     POST /agent/register/
@@ -770,6 +772,7 @@ def agent_register_view(request):
     return JsonResponse({"status": "ok", "action": action, "agent_id": agent_id})
 
 
+@csrf_exempt
 def agent_heartbeat_view(request):
     """
     POST /agent/heartbeat/
@@ -805,6 +808,7 @@ def agent_heartbeat_view(request):
     return JsonResponse({"status": "ok", "session_id": session_id})
 
 
+@csrf_exempt
 def agent_stop_session_view(request):
     """
     POST /agent/stop-session/
@@ -827,6 +831,7 @@ def agent_stop_session_view(request):
     return JsonResponse({"status": "ok", "session_id": session_id, "closed": bool(updated)})
 
 
+@csrf_exempt
 def agent_sync_view(request):
     """
     POST /agent/sync/
