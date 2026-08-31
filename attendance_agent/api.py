@@ -74,6 +74,7 @@ def create_app(agent: AttendanceAgent, config: AgentConfig) -> Flask:
 
     @app.route("/status", methods=["GET"])
     def status():
+        agent.sync_sessions_from_django()
         return jsonify({
             "status": "ok",
             "agent_id": agent.agent_id,
@@ -93,6 +94,11 @@ def create_app(agent: AttendanceAgent, config: AgentConfig) -> Flask:
             return jsonify({"error": "session_id is required"}), 400
 
         challenge = agent.generate_challenge(session_id)
+        if challenge is None:
+            # On-demand sync with Django if session secret is missing in RAM
+            agent.sync_sessions_from_django()
+            challenge = agent.generate_challenge(session_id)
+
         if challenge is None:
             return jsonify({
                 "error": "No active session found. Session may have expired or not started."

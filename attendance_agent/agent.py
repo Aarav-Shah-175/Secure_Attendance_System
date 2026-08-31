@@ -110,6 +110,33 @@ class AttendanceAgent:
             logger.error("Django registration request failed: %s", exc)
             return False
 
+    def sync_sessions_from_django(self) -> bool:
+        """
+        Fetch active session secrets from Django on-demand.
+        """
+        url = f"{self.config.django_url.rstrip('/')}/agent/sync/"
+        try:
+            resp = requests.post(
+                url,
+                json={"agent_id": self.agent_id},
+                headers={"Authorization": f"Bearer {self.config.api_token}"},
+                verify=self.config.verify_ssl,
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                for s in data.get("sessions", []):
+                    sess_id = s.get("session_id")
+                    sec_hex = s.get("session_secret_hex")
+                    exp = s.get("expires_at", time.time() + 1800)
+                    if sess_id and sec_hex:
+                        if not self.get_active_session(sess_id):
+                            self.start_session(sess_id, sec_hex, exp)
+                return True
+        except Exception as exc:
+            logger.debug("On-demand session sync failed: %s", exc)
+        return False
+
     # ------------------------------------------------------------------
     # Session management
     # ------------------------------------------------------------------
