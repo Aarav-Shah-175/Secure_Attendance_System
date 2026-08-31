@@ -11,9 +11,15 @@ Manages:
 import time
 import logging
 import threading
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Dict
+
+# Ensure package root is in sys.path when executed directly
+_pkg_root = Path(__file__).resolve().parent.parent
+if str(_pkg_root) not in sys.path:
+    sys.path.insert(0, str(_pkg_root))
 
 import requests  # type: ignore
 
@@ -211,3 +217,9 @@ class AttendanceAgent:
     def verify_nonce_fresh(self, nonce: str, session_id: str) -> tuple[bool, str]:
         """Verify a nonce is fresh and not replayed (consumed on success)."""
         return self._challenge_store.verify_and_consume(nonce, session_id)
+
+
+if __name__ == "__main__":
+    from attendance_agent.__main__ import main
+    main()
+
