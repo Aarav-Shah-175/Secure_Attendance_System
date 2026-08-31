@@ -210,10 +210,16 @@
             {% endif %}
         </div>
 
+        <!-- Network Connection Status Banner -->
+        <div id="networkStatusBanner" style="margin-bottom: 1.2rem; padding: 0.85rem; border-radius: 10px; font-weight: 600; font-size: 0.9rem; text-align: center; background-color: #fef3c7; color: #92400e; border: 1px solid #fde68a;">
+            🔍 Checking Classroom Wi-Fi Network Connection...
+        </div>
+
         <h3>Active Sessions</h3>
 
+        <div id="sessionList">
         {% for session in sessions %}
-        <div class="session-card">
+        <div class="session-card" data-session-id="{{ session.id }}" data-agent-id="{{ session.agent_id|default:'' }}">
             <p style="margin:0 0 0.4rem 0;">
                 <strong>Course Code:</strong> {{ session.course_code|upper }}
             </p>
@@ -221,13 +227,17 @@
                 <strong>Expires:</strong> {{ session.expiry }}
             </p>
 
-            <button onclick="submitAttendanceV2('{{ session.id }}')">
+            <button class="mark-attendance-btn" onclick="submitAttendanceV2('{{ session.id }}')">
                 Mark Attendance
             </button>
         </div>
         {% empty %}
         <p style="color:var(--text-muted); text-align:center; padding:1rem;">No active sessions currently open.</p>
         {% endfor %}
+        </div>
+        <p id="noNetworkSessionsMsg" style="display:none; color:var(--text-muted); text-align:center; padding:1rem;">
+            ⚠️ No active sessions found on your current classroom Wi-Fi network. Connect to your professor's hotspot to view active sessions.
+        </p>
 
         <p id="attendanceStatus"></p>
         <a href="{% url 'logout' %}">Logout</a>
@@ -392,7 +402,9 @@
                 }
 
                 if (!agentChallenge || !agentChallenge.proof) {
-                    console.warn("Could not obtain Attendance Agent challenge from local network.");
+                    statusEl.innerText = "❌ Network Verification Failed: You must be connected to the classroom Wi-Fi / Teacher Hotspot to mark attendance.";
+                    statusEl.style.color = "red";
+                    return;
                 }
 
                 // Step 1: Start attempt
@@ -790,6 +802,70 @@
                 camera.start();
             });
         }
+
+        async function checkClassroomNetwork() {
+            const banner = document.getElementById("networkStatusBanner");
+            const sessionCards = document.querySelectorAll(".session-card");
+            const noSessionsMsg = document.getElementById("noNetworkSessionsMsg");
+            const buttons = document.querySelectorAll(".mark-attendance-btn");
+
+            const candidateEndpoints = [
+                "http://127.0.0.1:5000/status",
+                "http://192.168.137.1:5000/status",
+                "http://192.168.1.1:5000/status"
+            ];
+
+            let activeAgentData = null;
+            for (const url of candidateEndpoints) {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 1200);
+                    const res = await fetch(url, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+                    if (res.ok) {
+                        activeAgentData = await res.json();
+                        break;
+                    }
+                } catch (e) {}
+            }
+
+            if (activeAgentData && activeAgentData.status === "ok") {
+                banner.style.backgroundColor = "#dcfce7";
+                banner.style.color = "#166534";
+                banner.style.borderColor = "#bbf7d0";
+                banner.innerHTML = "🟢 Connected to Classroom Wi-Fi (Hotspot Verified)";
+
+                let visibleCount = 0;
+                sessionCards.forEach(card => {
+                    const sessId = card.getAttribute("data-session-id");
+                    const activeSessions = activeAgentData.active_sessions || [];
+                    if (activeSessions.length === 0 || activeSessions.includes(sessId)) {
+                        card.style.display = "block";
+                        visibleCount++;
+                    } else {
+                        card.style.display = "none";
+                    }
+                });
+
+                if (visibleCount === 0 && sessionCards.length > 0) {
+                    if (noSessionsMsg) noSessionsMsg.style.display = "block";
+                }
+            } else {
+                banner.style.backgroundColor = "#fef2f2";
+                banner.style.color = "#991b1b";
+                banner.style.borderColor = "#fca5a5";
+                banner.innerHTML = "⚠️ Not Connected to Classroom Wi-Fi / Hotspot — Connect to Professor's Network to View Active Sessions";
+
+                buttons.forEach(btn => {
+                    btn.disabled = true;
+                    btn.style.opacity = "0.5";
+                    btn.style.cursor = "not-allowed";
+                    btn.title = "Connect to Classroom Wi-Fi to enable";
+                });
+            }
+        }
+
+        window.addEventListener("DOMContentLoaded", checkClassroomNetwork);
     </script>
 </body>
 
