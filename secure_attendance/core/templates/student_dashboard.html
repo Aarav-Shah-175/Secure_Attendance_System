@@ -187,7 +187,6 @@
 
     <div class="dashboard-container">
         <h2>Student Dashboard</h2>
-        <p class="subheading">View active classes and submit attendance securely</p>
 
         <div class="registration-status-box" style="margin-bottom: 1.2rem;">
             {% if is_fully_registered %}
@@ -211,32 +210,35 @@
         </div>
 
         <!-- Network Connection Status Banner -->
-        <div id="networkStatusBanner" style="margin-bottom: 1.2rem; padding: 0.85rem; border-radius: 10px; font-weight: 600; font-size: 0.9rem; text-align: center; background-color: #fef3c7; color: #92400e; border: 1px solid #fde68a;">
+        <div id="networkStatusBanner"
+            style="margin-bottom: 1.2rem; padding: 0.85rem; border-radius: 10px; font-weight: 600; font-size: 0.9rem; text-align: center; background-color: #fef3c7; color: #92400e; border: 1px solid #fde68a;">
             🔍 Checking Classroom Wi-Fi Network Connection...
         </div>
 
         <h3>Active Sessions</h3>
 
         <div id="sessionList">
-        {% for session in sessions %}
-        <div class="session-card" data-session-id="{{ session.id }}" data-agent-id="{{ session.agent_id|default:'' }}">
-            <p style="margin:0 0 0.4rem 0;">
-                <strong>Course Code:</strong> {{ session.course_code|upper }}
-            </p>
-            <p style="margin:0 0 0.8rem 0; color:var(--text-muted); font-size:0.88rem;">
-                <strong>Expires:</strong> {{ session.expiry }}
-            </p>
+            {% for session in sessions %}
+            <div class="session-card" data-session-id="{{ session.id }}"
+                data-agent-id="{{ session.agent_id|default:'' }}">
+                <p style="margin:0 0 0.4rem 0;">
+                    <strong>Course Code:</strong> {{ session.course_code|upper }}
+                </p>
+                <p style="margin:0 0 0.8rem 0; color:var(--text-muted); font-size:0.88rem;">
+                    <strong>Expires:</strong> {{ session.expiry }}
+                </p>
 
-            <button class="mark-attendance-btn" onclick="submitAttendanceV2('{{ session.id }}')">
-                Mark Attendance
-            </button>
-        </div>
-        {% empty %}
-        <p style="color:var(--text-muted); text-align:center; padding:1rem;">No active sessions currently open.</p>
-        {% endfor %}
+                <button class="mark-attendance-btn" onclick="submitAttendanceV2('{{ session.id }}')">
+                    Mark Attendance
+                </button>
+            </div>
+            {% empty %}
+            <p style="color:var(--text-muted); text-align:center; padding:1rem;">No active sessions currently open.</p>
+            {% endfor %}
         </div>
         <p id="noNetworkSessionsMsg" style="display:none; color:var(--text-muted); text-align:center; padding:1rem;">
-            ⚠️ No active sessions found on your current classroom Wi-Fi network. Connect to your professor's hotspot to view active sessions.
+            ⚠️ No active sessions found on your current classroom Wi-Fi network. Connect to your professor's hotspot to
+            view active sessions.
         </p>
 
         <p id="attendanceStatus"></p>
@@ -831,7 +833,7 @@
                         window.discoveredAgentBaseUrl = url.replace("/status", "");
                         break;
                     }
-                } catch (e) {}
+                } catch (e) { }
             }
 
             if (activeAgentData && activeAgentData.status === "ok") {
