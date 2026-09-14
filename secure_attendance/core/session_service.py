@@ -56,7 +56,7 @@ def create_attendance_session(
     metadata_string = session_id + course_code + str(timestamp) + str(expiry) + str(security_mode)
     metadata_hash = sha256_hash(metadata_string)
 
-    private_key_pem = aes_decrypt(professor.private_key_encrypted).decode("utf-8")
+    private_key_pem = professor.get_private_key_pem()
     signature = sign_data(private_key_pem, metadata_hash.encode("utf-8"))
 
     # Resolve agent_id: use provided, or look up the professor's registered agent
