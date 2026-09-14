@@ -73,46 +73,48 @@ The **Secure Attendance Platform (V3)** is a zero-trust attendance platform that
 
 ```mermaid
 flowchart TD
-    classDef startNode fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#ffffff,font-weight:bold;
-    classDef layerCard fill:#0f172a,stroke:#475569,stroke-width:1.5px,color:#f8fafc;
-    classDef passNode fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ffffff,font-weight:bold;
-    classDef rejectNode fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#ffffff;
-
-    Start([👤 Student Initiates Attendance]) :::startNode --> L1
+    Start["👤 Student Initiates Attendance"] --> L1
 
     subgraph L1 ["🛡️ Layer 1: Physical Proximity (LAN Hotspot)"]
         direction TB
         L1_Desc["• Connects to Professor Wi-Fi Hotspot (192.168.137.1)<br/>• Fetches ephemeral HMAC-SHA256 challenge (30s TTL)<br/>• Plain HTTP on LAN (Zero Root CA required)"]
     end
     L1 -->|Valid LAN Nonce| L2
-    L1 -.->|Out of Range / Remote Proxy| R1[❌ Reject: Proximity Failure]:::rejectNode
+    L1 -.->|Out of Range / Remote Proxy| R1["❌ Reject: Proximity Failure"]
 
     subgraph L2 ["👁️ Layer 2: Multi-Frame Liveness & Anti-Spoofing"]
         direction TB
         L2_Desc["• Captures 7 temporal burst frames (~1.2s window)<br/>• Dual MiniFASNet Ensemble (Scale 2.7x + 4.0x SE)<br/>• Roll Angle Tilt Guard (&le; 30°) & Distance Ratio Check"]
     end
     L2 -->|Live Genuine Face| L3
-    L2 -.->|Print / Screen / Deepfake| R2[❌ Reject: Presentation Attack]:::rejectNode
+    L2 -.->|Print / Screen / Deepfake| R2["❌ Reject: Presentation Attack"]
 
     subgraph L3 ["🧬 Layer 3: Deep Metric Biometric Matching"]
         direction TB
         L3_Desc["• InceptionResNetV1 (FaceNet) 512-d unit vector<br/>• Cosine Similarity vs Enrolled Profile<br/>• Match Threshold: Similarity &ge; 0.65"]
     end
     L3 -->|Biometric Match Confirmed| L4
-    L3 -.->|Wrong Face / Impersonator| R3[❌ Reject: Identity Mismatch]:::rejectNode
+    L3 -.->|Wrong Face / Impersonator| R3["❌ Reject: Identity Mismatch"]
 
     subgraph L4 ["🔑 Layer 4: FIDO2 / WebAuthn Hardware Passkey"]
         direction TB
         L4_Desc["• Server issues cryptographic WebAuthn challenge<br/>• Hardware Secure Enclave (Touch ID / Face ID / PIN)<br/>• Signs challenge with non-exportable private key"]
     end
     L4 -->|Hardware Assertion Verified| L5
-    L4 -.->|Invalid Signature / Proxy Device| R4[❌ Reject: Auth Failure]:::rejectNode
+    L4 -.->|Invalid Signature / Proxy Device| R4["❌ Reject: Auth Failure"]
 
     subgraph L5 ["⛓️ Layer 5: Tamper-Evident Audit Ledger"]
         direction TB
         L5_Desc["• Appends to SHA-256 Hash Chain: H_n = SHA256(H_n-1 || Record_n)<br/>• Cryptographically signed with Professor Ed25519 Key<br/>• Real-time Merkle root integrity verification"]
     end
-    L5 --> Success([✅ Attendance Recorded & Sealed in Ledger]):::passNode
+    L5 --> Success["✅ Attendance Recorded & Sealed in Ledger"]
+
+    style Start fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#ffffff
+    style Success fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ffffff
+    style R1 fill:#7f1d1d,stroke:#ef4444,stroke-width:1.5px,color:#ffffff
+    style R2 fill:#7f1d1d,stroke:#ef4444,stroke-width:1.5px,color:#ffffff
+    style R3 fill:#7f1d1d,stroke:#ef4444,stroke-width:1.5px,color:#ffffff
+    style R4 fill:#7f1d1d,stroke:#ef4444,stroke-width:1.5px,color:#ffffff
 ```
 
 ---
@@ -121,28 +123,22 @@ flowchart TD
 
 ```mermaid
 flowchart TB
-    classDef cloudBox fill:#0b1329,stroke:#38bdf8,stroke-width:2px,color:#ffffff;
-    classDef agentBox fill:#0d1f2d,stroke:#34d399,stroke-width:2px,color:#ffffff;
-    classDef phoneBox fill:#1e1b4b,stroke:#a78bfa,stroke-width:2px,color:#ffffff;
-    classDef component fill:#1e293b,stroke:#64748b,stroke-width:1px,color:#f8fafc;
-    classDef db fill:#172554,stroke:#60a5fa,stroke-width:1.5px,color:#ffffff;
-
     subgraph CLOUD ["☁️ AWS EC2 Cloud Infrastructure (Ubuntu 24.04 LTS)"]
         direction TB
         
         subgraph CADDY ["🌐 Caddy Web Server (Reverse Proxy :80 / :443)"]
-            CAD_SSL["• Automated Let's Encrypt TLS<br/>• SSL Termination & Header Rewriting"]:::component
+            CAD_SSL["• Automated Let's Encrypt TLS<br/>• SSL Termination & Header Rewriting"]
         end
 
         subgraph DJANGO ["⚙️ Django 5.2 Application Server (Gunicorn WSGI :8000)"]
-            DJ_CORE["• REST Attendance & Session API<br/>• Role-Based Access Control (RBAC)"]:::component
-            DJ_AI["• FaceNet 512-d Face Recognition<br/>• Dual MiniFASNet Anti-Spoofing Engine"]:::component
-            DJ_WA["• WebAuthn / FIDO2 Relying Party<br/>• Monotonic Counter Verification"]:::component
-            DJ_LEDGER["• SHA-256 Hash Chain Audit Engine<br/>• Cryptographic Ledger Validator"]:::component
+            DJ_CORE["• REST Attendance & Session API<br/>• Role-Based Access Control (RBAC)"]
+            DJ_AI["• FaceNet 512-d Face Recognition<br/>• Dual MiniFASNet Anti-Spoofing Engine"]
+            DJ_WA["• WebAuthn / FIDO2 Relying Party<br/>• Monotonic Counter Verification"]
+            DJ_LEDGER["• SHA-256 Hash Chain Audit Engine<br/>• Cryptographic Ledger Validator"]
         end
 
         subgraph DATABASE ["🗄️ PostgreSQL 16 Database + pgvector (:5432)"]
-            DB_DATA["• Student Profiles & 512-d Embeddings<br/>• WebAuthn Public Keys & Counters<br/>• Cryptographic Audit Entries & Roots"]:::db
+            DB_DATA["• Student Profiles & 512-d Embeddings<br/>• WebAuthn Public Keys & Counters<br/>• Cryptographic Audit Entries & Roots"]
         end
 
         CAD_SSL -->|Proxy localhost:8000| DJ_CORE
@@ -153,9 +149,9 @@ flowchart TB
         direction TB
         
         subgraph AGENT ["⚡ Attendance Agent Daemon (Python :5000)"]
-            AG_KEY["• Ed25519 Asymmetric Identity Pair<br/>• Private Key in ~/.secure_attendance/"]:::component
-            AG_CHAL["• RAM-Only Session Secret Store<br/>• Ephemeral HMAC-SHA256 Challenge Nonces"]:::component
-            AG_HB["• Background Heartbeat Emitter<br/>• Session Registration Client"]:::component
+            AG_KEY["• Ed25519 Asymmetric Identity Pair<br/>• Private Key in ~/.secure_attendance/"]
+            AG_CHAL["• RAM-Only Session Secret Store<br/>• Ephemeral HMAC-SHA256 Challenge Nonces"]
+            AG_HB["• Background Heartbeat Emitter<br/>• Session Registration Client"]
         end
     end
 
@@ -163,9 +159,9 @@ flowchart TB
         direction TB
         
         subgraph PHONE ["Browser & Hardware Enclave"]
-            CL_BROWSER["• Mobile Safari / Chrome UI<br/>• WebAuthn JS API Client"]:::component
-            CL_CAM["• Front Camera Video Burst<br/>• 7 Temporal Frame Collector"]:::component
-            CL_ENCLAVE["• Apple Secure Enclave / Android StrongBox<br/>• Non-Exportable FIDO2 Private Key"]:::component
+            CL_BROWSER["• Mobile Safari / Chrome UI<br/>• WebAuthn JS API Client"]
+            CL_CAM["• Front Camera Video Burst<br/>• 7 Temporal Frame Collector"]
+            CL_ENCLAVE["• Apple Secure Enclave / Android StrongBox<br/>• Non-Exportable FIDO2 Private Key"]
         end
     end
 
