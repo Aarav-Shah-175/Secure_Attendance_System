@@ -210,6 +210,8 @@ if WEBAUTHN_RP_ID:
             if entry not in CSRF_TRUSTED_ORIGINS:
                 CSRF_TRUSTED_ORIGINS.append(entry)
 
+CSRF_COOKIE_NAME = "csrftoken_v3"
+SESSION_COOKIE_NAME = "sessionid_v3"
 CSRF_COOKIE_SECURE = False
 SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_HTTPONLY = False

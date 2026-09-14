@@ -8,7 +8,7 @@ from datetime import timedelta
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.http import JsonResponse, HttpResponse
 from django.utils import timezone
 from openpyxl import Workbook
@@ -53,6 +53,7 @@ logger = logging.getLogger(__name__)
 
 # ---------- AUTH & DASHBOARD VIEWS ----------
 
+@csrf_exempt
 @ensure_csrf_cookie
 @rate_limit_request(key_prefix="login", limit=10, window_seconds=60)
 def login_view(request):
