@@ -3,7 +3,7 @@ from django.core.cache import cache
 from django.http import JsonResponse
 
 
-def rate_limit_request(key_prefix: str, limit: int = 5, window_seconds: int = 60):
+def rate_limit_request(key_prefix: str, limit: int = 100, window_seconds: int = 60):
     """
     Decorator enforcing cache-backed rate limiting per IP / User.
     """

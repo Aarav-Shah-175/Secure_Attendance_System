@@ -1,10 +1,11 @@
 import os
+import json
 import base64
 import logging
 from dataclasses import dataclass
-from typing import Protocol, Optional
-from django.conf import settings #type: ignore
-from django.core.exceptions import ObjectDoesNotExist #type: ignore
+from typing import Protocol, Optional, List
+from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +53,7 @@ class UnconfiguredLivenessVerifier:
 
 class MediaPipeLivenessVerifier:
     """
-    Verifier for client-side MediaPipe challenge-response liveness protocol.
-    The challenge (blink/left/right/straight) and HMAC nonce are verified server-side.
+    Legacy/Mock verifier for challenge-response liveness protocol.
     """
 
     def __init__(self):
@@ -86,16 +86,113 @@ class MediaPipeLivenessVerifier:
         )
 
 
-class FaceNetLivenessVerifier:
+class ProductionFaceLivenessVerifier:
     """
-    Adapter implementing face matching + liveness evaluation using MTCNN and InceptionResnetV1.
-    Imports heavy ML libraries dynamically so module load remains fast and lightweight.
+    Production face verification and anti-spoofing pipeline.
+    Combines MTCNN landmark detection & rotation normalization,
+    close-distance anomaly protection, ensemble MiniFASNet (scale 2.7 & 4.0),
+    multi-frame temporal smoothing, and InceptionResNetV1 face matching.
     """
 
-    def __init__(self, threshold: float = 0.7):
-        self.threshold = threshold
-        self.verifier_name = "FaceNetLivenessVerifier"
-        self.verifier_version = "1.0.0"
+    def __init__(
+        self,
+        similarity_threshold: float = 0.65,
+        spoof_threshold: float = 0.60,
+        max_replay_thresh: float = 0.30
+    ):
+        self.similarity_threshold = similarity_threshold
+        self.spoof_threshold = spoof_threshold
+        self.max_replay_thresh = max_replay_thresh
+        self.verifier_name = "ProductionFaceLivenessVerifier (MiniFASNet + FaceNet)"
+        self.verifier_version = "2.0.0"
+
+    def _decode_frame(self, b64_str: str):
+        import cv2
+        import numpy as np
+
+        if "," in b64_str:
+            b64_str = b64_str.split(",", 1)[1]
+
+        raw_bytes = base64.b64decode(b64_str)
+        np_arr = np.frombuffer(raw_bytes, np.uint8)
+        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        return frame
+
+    def _parse_frames(self, image_payload: str) -> List:
+        """
+        Parses base64 string or JSON payload containing a burst of frames.
+        """
+        import numpy as np
+        frames = []
+        if not image_payload or not isinstance(image_payload, str):
+            return frames
+
+        # Try parsing JSON array or dict with 'frames' / 'images'
+        trimmed = image_payload.strip()
+        if trimmed.startswith("{") or trimmed.startswith("["):
+            try:
+                parsed = json.loads(trimmed)
+                if isinstance(parsed, list):
+                    raw_list = parsed
+                elif isinstance(parsed, dict):
+                    raw_list = parsed.get("frames") or parsed.get("images") or [parsed.get("image")]
+                else:
+                    raw_list = []
+
+                for item in raw_list:
+                    if isinstance(item, str):
+                        f = self._decode_frame(item)
+                        if f is not None and f.size > 0:
+                            frames.append(f)
+                return frames
+            except Exception as e:
+                logger.warning("Failed to parse JSON frames payload: %s", e)
+
+        # Single base64 image string fallback
+        try:
+            f = self._decode_frame(trimmed)
+            if f is not None and f.size > 0:
+                frames.append(f)
+        except Exception as e:
+            logger.warning("Failed to decode single base64 image: %s", e)
+
+        return frames
+
+    def _get_stored_embedding(self, student_id: str):
+        """Retrieves stored 512-dim embedding for student."""
+        import numpy as np
+        from core.student_service import FaceEmbeddingCache
+
+        # 1. Memory cache
+        cached = FaceEmbeddingCache.get(student_id)
+        if cached is not None:
+            return cached
+
+        # 2. File storage
+        embedding_path = os.path.join("embeddings", f"{student_id}.npy")
+        if os.path.exists(embedding_path):
+            try:
+                emb = np.load(embedding_path)
+                return emb
+            except Exception as e:
+                logger.error("Error loading embedding file for %s: %s", student_id, e)
+
+        # 3. Database fallback
+        try:
+            from core.models import StudentProfile, User
+            from core.crypto_utils import aes_decrypt
+            user = User.objects.filter(id=student_id).first()
+            if user:
+                profile = StudentProfile.objects.filter(user=user).first()
+                if profile and profile.encrypted_face_embedding:
+                    decrypted_bytes = aes_decrypt(bytes(profile.encrypted_face_embedding))
+                    emb = np.frombuffer(decrypted_bytes, dtype=np.float32)
+                    if emb.size == 512:
+                        return emb
+        except Exception as e:
+            logger.error("Error retrieving database embedding for %s: %s", student_id, e)
+
+        return None
 
     def verify(
         self,
@@ -105,7 +202,7 @@ class FaceNetLivenessVerifier:
         image_payload: str,
         challenge: str
     ) -> LivenessDecision:
-        if not image_payload or not isinstance(image_payload, str):
+        if not image_payload:
             return LivenessDecision(
                 passed=False,
                 score=None,
@@ -114,8 +211,8 @@ class FaceNetLivenessVerifier:
                 verifier_name=self.verifier_name,
             )
 
-        # Enforce file size limit before decoding (e.g. max 5MB base64 string ~ 6.7MB raw)
-        if len(image_payload) > 7_000_000:
+        # Size limit (max 20MB payload)
+        if len(image_payload) > 20_000_000:
             return LivenessDecision(
                 passed=False,
                 score=None,
@@ -124,26 +221,8 @@ class FaceNetLivenessVerifier:
                 verifier_name=self.verifier_name,
             )
 
-        try:
-            # Strip base64 header if present
-            if "," in image_payload:
-                image_data_str = image_payload.split(",", 1)[1]
-            else:
-                image_data_str = image_payload
-
-            image_bytes = base64.b64decode(image_data_str)
-        except Exception:
-            return LivenessDecision(
-                passed=False,
-                score=None,
-                reason="malformed_base64_image",
-                verifier_version=self.verifier_version,
-                verifier_name=self.verifier_name,
-            )
-
-        # Check stored embedding for student
-        embedding_path = os.path.join("embeddings", f"{student_id}.npy")
-        if not os.path.exists(embedding_path):
+        stored_embedding = self._get_stored_embedding(student_id)
+        if stored_embedding is None:
             return LivenessDecision(
                 passed=False,
                 score=None,
@@ -152,86 +231,42 @@ class FaceNetLivenessVerifier:
                 verifier_name=self.verifier_name,
             )
 
+        frames = self._parse_frames(image_payload)
+        if not frames:
+            return LivenessDecision(
+                passed=False,
+                score=None,
+                reason="image_decode_failed",
+                verifier_version=self.verifier_version,
+                verifier_name=self.verifier_name,
+            )
+
         try:
-            import cv2 #type: ignore
-            import numpy as np
-            import torch #type: ignore
-            from PIL import Image #type: ignore
-            from facenet_pytorch import MTCNN, InceptionResnetV1 #type: ignore
- 
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            from core.face_system.engine import FaceSystemEngine
 
-            np_img = np.frombuffer(image_bytes, np.uint8)
-            frame = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
+            engine = FaceSystemEngine.get_instance()
+            result = engine.overall_verification(
+                frames=frames,
+                registered_embedding=stored_embedding,
+                similarity_threshold=self.similarity_threshold,
+                spoof_threshold=self.spoof_threshold,
+                max_replay_thresh=self.max_replay_thresh
+            )
 
-            if frame is None:
-                return LivenessDecision(
-                    passed=False,
-                    score=None,
-                    reason="image_decode_failed",
-                    verifier_version=self.verifier_version,
-                    verifier_name=self.verifier_name,
-                )
+            passed = bool(result["passed"])
+            reason = result["reason"]
+            score = float(result.get("real_score", 0.0))
 
-            # Check image dimensions (max 4096x4096, min 64x64)
-            h, w = frame.shape[:2]
-            if w < 64 or h < 64 or w > 4096 or h > 4096:
-                return LivenessDecision(
-                    passed=False,
-                    score=None,
-                    reason="invalid_image_dimensions",
-                    verifier_version=self.verifier_version,
-                    verifier_name=self.verifier_name,
-                )
-
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            img = Image.fromarray(frame_rgb)
-
-            mtcnn = MTCNN(image_size=160, margin=0, device=device, keep_all=False)
-            face = mtcnn(img)
-
-            if face is None:
-                return LivenessDecision(
-                    passed=False,
-                    score=None,
-                    reason="no_face_detected",
-                    verifier_version=self.verifier_version,
-                    verifier_name=self.verifier_name,
-                )
-
-            resnet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
-            face_tensor = face.unsqueeze(0).to(device)
-
-            with torch.no_grad():
-                embedding = resnet(face_tensor)
-
-            current_emb = embedding.cpu().numpy()
-            stored_embedding = np.load(embedding_path)
-
-            emb1 = torch.tensor(stored_embedding)
-            emb2 = torch.tensor(current_emb)
-
-            similarity = float(torch.nn.functional.cosine_similarity(emb1, emb2).item())
-
-            if similarity > self.threshold:
-                return LivenessDecision(
-                    passed=True,
-                    score=similarity,
-                    reason="liveness_and_face_verified",
-                    verifier_version=self.verifier_version,
-                    verifier_name=self.verifier_name,
-                )
-            else:
-                return LivenessDecision(
-                    passed=False,
-                    score=similarity,
-                    reason="face_match_below_threshold",
-                    verifier_version=self.verifier_version,
-                    verifier_name=self.verifier_name,
-                )
+            return LivenessDecision(
+                passed=passed,
+                score=score,
+                reason=reason,
+                verifier_version=self.verifier_version,
+                verifier_name=self.verifier_name,
+            )
 
         except Exception as e:
-            logger.error("Liveness verification error: %s", str(e))
+            logger.error("Production liveness verification error: %s", str(e), exc_info=True)
             return LivenessDecision(
                 passed=False,
                 score=None,
@@ -241,14 +276,20 @@ class FaceNetLivenessVerifier:
             )
 
 
+# Alias FaceNetLivenessVerifier to ProductionFaceLivenessVerifier for backwards compatibility
+FaceNetLivenessVerifier = ProductionFaceLivenessVerifier
+
+
 def get_liveness_verifier() -> LivenessVerifier:
     """
     Factory function returning configured liveness verifier instance.
-    Defaults to UnconfiguredLivenessVerifier (failing closed) unless configured.
+    Defaults to ProductionFaceLivenessVerifier.
     """
-    verifier_type = getattr(settings, "LIVENESS_VERIFIER_TYPE", "unconfigured")
+    verifier_type = getattr(settings, "LIVENESS_VERIFIER_TYPE", "new_face_system")
+    if verifier_type in ("new_face_system", "production", "facenet"):
+        return ProductionFaceLivenessVerifier()
     if verifier_type == "mediapipe":
         return MediaPipeLivenessVerifier()
-    if verifier_type == "facenet":
-        return FaceNetLivenessVerifier()
-    return UnconfiguredLivenessVerifier()
+    if verifier_type == "unconfigured":
+        return UnconfiguredLivenessVerifier()
+    return ProductionFaceLivenessVerifier()

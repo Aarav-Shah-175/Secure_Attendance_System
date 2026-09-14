@@ -4,53 +4,6 @@ import base64
 import csv
 import logging
 import ipaddress
-from django.shortcuts import render, redirect
-from django.contrib.auth import authenticate, login, logout
-from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse, HttpResponse
-from django.utils import timezone
-from openpyxl import Workbook
-
-from core.models import (
-    AttendanceSession,
-    AttendanceRecord,
-    PasskeyCredential,
-    AttendanceAttempt,
-    AttendanceAgent,
-    SecurityMode
-)
-from core.session_service import create_attendance_session
-from core.attendance_service import verify_session_integrity
-from core.student_service import (
-    get_face_models,
-    register_student_face_embedding,
-    verify_student_face,
-    revoke_student_face
-)
-from core.rate_limit import rate_limit_request
-from core.presence_service import record_presence_heartbeat
-from core.secure_presence_v2_service import (
-    start_attendance_attempt,
-    process_liveness_verification,
-    issue_signing_challenge_v2,
-    submit_attendance_v2
-)
-from core.webauthn_service import (
-    generate_passkey_registration_options,
-    verify_passkey_registration
-)
-from core.audit_service import verify_v2_session_integrity, close_session_audit_root
-from core.liveness_challenge_service import issue_liveness_challenge, verify_liveness_nonce
-
-logger = logging.getLogger(__name__)
-
-
-import os
-import json
-import base64
-import csv
-import logging
-import ipaddress
 from datetime import timedelta
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
@@ -77,6 +30,7 @@ from core.student_service import (
     verify_student_face,
     revoke_student_face
 )
+from core.face_system.engine import FaceSystemEngine
 from core.rate_limit import rate_limit_request
 from core.presence_service import record_presence_heartbeat
 from core.secure_presence_v2_service import (
@@ -390,14 +344,16 @@ def register_face(request):
 
     try:
         data = json.loads(request.body)
-        image_data = data["image"].split(",")[1]
+        raw_image = data.get("image", "")
+        if "," in raw_image:
+            image_data = raw_image.split(",", 1)[1]
+        else:
+            image_data = raw_image
+
         image_bytes = base64.b64decode(image_data)
 
         import cv2
         import numpy as np
-        from PIL import Image
-
-        mtcnn, resnet = get_face_models()
 
         np_img = np.frombuffer(image_bytes, np.uint8)
         frame = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
@@ -405,27 +361,17 @@ def register_face(request):
         if frame is None:
             return JsonResponse({"status": "fail", "message": "Invalid image payload"})
 
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        img = Image.fromarray(frame_rgb)
+        engine = FaceSystemEngine.get_instance()
+        embedding_np = engine.extract_face_embedding(frame)
 
-        face = mtcnn(img)
-        if face is None:
+        if embedding_np is None:
             return JsonResponse({"status": "fail", "message": "No face detected in frame. Align face clearly."})
 
-        import torch
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        face_tensor = face.unsqueeze(0).to(device)
-
-        with torch.no_grad():
-            embedding = resnet(face_tensor)
-
-        embedding_np = embedding.cpu().numpy()
         success, msg = register_student_face_embedding(request.user, embedding_np)
-
         return JsonResponse({"status": "success" if success else "fail", "message": msg})
 
     except Exception as e:
-        logger.error("Error during face registration: %s", str(e))
+        logger.error("Error during face registration: %s", str(e), exc_info=True)
         return JsonResponse({"status": "fail", "message": "Face registration error"}, status=500)
 
 
@@ -440,14 +386,16 @@ def face_verify(request):
 
     try:
         data = json.loads(request.body)
-        image_data = data["image"].split(",")[1]
+        raw_image = data.get("image", "")
+        if "," in raw_image:
+            image_data = raw_image.split(",", 1)[1]
+        else:
+            image_data = raw_image
+
         image_bytes = base64.b64decode(image_data)
 
         import cv2
         import numpy as np
-        from PIL import Image
-
-        mtcnn, resnet = get_face_models()
 
         np_img = np.frombuffer(image_bytes, np.uint8)
         frame = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
@@ -455,22 +403,13 @@ def face_verify(request):
         if frame is None:
             return JsonResponse({"status": "fail", "message": "Invalid image payload"})
 
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        img = Image.fromarray(frame_rgb)
+        engine = FaceSystemEngine.get_instance()
+        embedding_np = engine.extract_face_embedding(frame)
 
-        face = mtcnn(img)
-        if face is None:
+        if embedding_np is None:
             return JsonResponse({"status": "fail", "message": "No face detected"})
 
-        import torch
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        face_tensor = face.unsqueeze(0).to(device)
-
-        with torch.no_grad():
-            embedding = resnet(face_tensor)
-
-        embedding_np = embedding.cpu().numpy()
-        match_ok, score, msg = verify_student_face(str(request.user.id), embedding_np, threshold=0.7)
+        match_ok, score, msg = verify_student_face(str(request.user.id), embedding_np, threshold=0.65)
 
         if match_ok:
             return JsonResponse({"status": "success", "score": score})
@@ -478,7 +417,7 @@ def face_verify(request):
             return JsonResponse({"status": "fail", "message": msg, "score": score})
 
     except Exception as e:
-        logger.error("Error during face verification: %s", str(e))
+        logger.error("Error during face verification: %s", str(e), exc_info=True)
         return JsonResponse({"status": "fail", "message": "Verification error"}, status=500)
 
 
@@ -503,7 +442,7 @@ def passkey_register_options_view(request):
         return JsonResponse({"error": "Unauthorized"}, status=403)
 
     try:
-        options_dict, challenge_b64url = generate_passkey_registration_options(request.user)
+        options_dict, challenge_b64url = generate_passkey_registration_options(request.user, request=request)
         request.session["passkey_reg_challenge"] = challenge_b64url
         return JsonResponse(options_dict)
     except Exception as e:
@@ -526,7 +465,8 @@ def passkey_register_verify_view(request):
         success, passkey, message = verify_passkey_registration(
             user=request.user,
             credential_payload=payload,
-            expected_challenge=expected_challenge
+            expected_challenge=expected_challenge,
+            request=request
         )
         if success:
             request.session.pop("passkey_reg_challenge", None)
@@ -624,32 +564,40 @@ def liveness_challenge_view(request):
 @login_required
 @rate_limit_request(key_prefix="v2_verify_liveness", limit=5, window_seconds=60)
 def verify_liveness_v2_view(request):
-    """POST — Verify the HMAC nonce echoed back by the client after completing the challenge."""
+    """
+    POST — Verify face recognition and anti-spoofing liveness for an attendance attempt.
+    Accepts:
+      - Multi-frame burst payload: { "attempt_id": "...", "frames": ["base64_1", "base64_2", ...] }
+      - Single-frame payload: { "attempt_id": "...", "image": "base64..." }
+      - Or legacy nonce payload (if configured for mediapipe)
+    """
     if request.user.role != "student":
         return JsonResponse({"error": "Unauthorized"}, status=403)
 
     try:
-        data = json.loads(request.body.decode("utf-8"))
+        raw_body = request.body.decode("utf-8")
+        data = json.loads(raw_body)
         attempt_id = data.get("attempt_id")
-        nonce = data.get("nonce", "")
+        if not attempt_id:
+            return JsonResponse({"status": "error", "message": "attempt_id required"}, status=400)
 
-        # Validate the nonce (proves the client received a genuine server challenge)
-        nonce_ok, nonce_reason = verify_liveness_nonce(attempt_id, nonce)
-        if not nonce_ok:
-            logger.warning(
-                "Liveness nonce validation failed attempt=%s reason=%s user=%s",
-                attempt_id, nonce_reason, request.user.id
-            )
-            return JsonResponse(
-                {"status": "error", "message": f"Liveness check failed: {nonce_reason}"},
-                status=400
-            )
+        # Check for legacy mediapipe nonce mode if verifier configured as mediapipe
+        from django.conf import settings as _s
+        if getattr(_s, "LIVENESS_VERIFIER_TYPE", "new_face_system") == "mediapipe":
+            nonce = data.get("nonce", "")
+            nonce_ok, nonce_reason = verify_liveness_nonce(attempt_id, nonce)
+            if not nonce_ok:
+                logger.warning("Liveness nonce failed attempt=%s reason=%s user=%s", attempt_id, nonce_reason, request.user.id)
+                return JsonResponse({"status": "error", "message": f"Liveness check failed: {nonce_reason}"}, status=400)
+            image_payload = "nonce_verified"
+        else:
+            # Production pipeline: pass entire JSON payload (containing frames or image)
+            image_payload = raw_body
 
-        # Pass a sentinel image payload — nonce-based verifier does not need image bytes
         success, verification, message = process_liveness_verification(
             attempt_id=attempt_id,
             user=request.user,
-            image_payload="nonce_verified"
+            image_payload=image_payload
         )
 
         return JsonResponse({
@@ -657,7 +605,7 @@ def verify_liveness_v2_view(request):
             "message": message
         }, status=200 if success else 400)
     except Exception as e:
-        logger.error("Liveness verification endpoint error: %s", str(e))
+        logger.error("Liveness verification endpoint error: %s", str(e), exc_info=True)
         return JsonResponse({"error": "Liveness verification processing error"}, status=500)
 
 
@@ -673,7 +621,8 @@ def passkey_authenticate_options_view(request):
 
         success, options_dict, message = issue_signing_challenge_v2(
             attempt_id=attempt_id,
-            user=request.user
+            user=request.user,
+            request=request
         )
 
         if success:
@@ -704,7 +653,8 @@ def submit_attendance_v2_view(request):
             user=request.user,
             attempt_id=attempt_id,
             credential_payload=credential_payload,
-            client_ip=client_ip
+            client_ip=client_ip,
+            request=request
         )
 
         return JsonResponse({

@@ -99,6 +99,9 @@ def start_attendance_attempt(
         agent_proof_verified=bool(agent_nonce and agent_sig),
     )
 
+    # Automatically record initial presence heartbeat for attempt
+    record_presence_heartbeat(attempt, user, client_ip)
+
     return True, attempt, "Attendance attempt initialized."
 
 
@@ -145,6 +148,8 @@ def process_liveness_verification(
     if decision.passed:
         attempt.status = AttemptStatus.BIOMETRIC_VERIFIED
         attempt.save(update_fields=['status'])
+        # Refresh presence heartbeat upon successful biometric verification
+        record_presence_heartbeat(attempt, user, attempt.client_ip or "127.0.0.1")
         return True, liveness_verification, "Biometric & liveness verification passed."
     else:
         attempt.status = AttemptStatus.REJECTED
@@ -155,7 +160,8 @@ def process_liveness_verification(
 
 def issue_signing_challenge_v2( #Prevention against Replay Attack
     attempt_id: str,
-    user: User
+    user: User,
+    request: Any = None
 ) -> Tuple[bool, Optional[Dict[str, Any]], str]:
     """
     Step 3 of Secure V2 flow: Issue a short-lived WebAuthn authentication challenge.
@@ -176,7 +182,7 @@ def issue_signing_challenge_v2( #Prevention against Replay Attack
     if not has_recent_valid_heartbeat(attempt, user):
         return False, None, "Missing active presence heartbeat. Ensure you are connected to the classroom hotspot."
 
-    options_dict, challenge_b64url = generate_passkey_authentication_options(user)
+    options_dict, challenge_b64url = generate_passkey_authentication_options(user, request=request)
 
     now = timezone.now()
     attempt.signing_challenge = challenge_b64url
@@ -197,7 +203,8 @@ def submit_attendance_v2(
     user: User,
     attempt_id: str,
     credential_payload: dict,
-    client_ip: str
+    client_ip: str,
+    request: Any = None
 ) -> Tuple[bool, str]:
     """
     Step 4 of Secure V2 flow: Atomically verify WebAuthn assertion and record attendance.
@@ -245,7 +252,8 @@ def submit_attendance_v2(
         success, passkey, msg = verify_passkey_authentication(
             user=user,
             credential_payload=credential_payload,
-            expected_challenge=attempt.signing_challenge
+            expected_challenge=attempt.signing_challenge,
+            request=request
         )
 
         if not success:

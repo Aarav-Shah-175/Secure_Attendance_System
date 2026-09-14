@@ -35,6 +35,31 @@ ALLOWED_HOSTS = ["*", "localhost",
     "127.0.0.1",
     "192.168.137.1",]
 
+CSRF_TRUSTED_ORIGINS = [
+    "http://*.sslip.io:8000",
+    "https://*.sslip.io:8000",
+    "http://*.sslip.io",
+    "https://*.sslip.io",
+    "http://*.nip.io:8000",
+    "https://*.nip.io:8000",
+    "http://*.nip.io",
+    "https://*.nip.io",
+    "http://192.168.137.1:8000",
+    "https://192.168.137.1:8000",
+    "http://127.0.0.1:8000",
+    "https://127.0.0.1:8000",
+    "http://localhost:8000",
+    "https://localhost:8000",
+    "http://localhost",
+    "https://localhost",
+]
+
+extra_csrf = os.getenv("CSRF_TRUSTED_ORIGINS")
+if extra_csrf:
+    CSRF_TRUSTED_ORIGINS.extend([origin.strip() for origin in extra_csrf.split(",") if origin.strip()])
+
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 
 # Application definition
 
@@ -160,7 +185,7 @@ CACHES = {
     }
 }
 
-LIVENESS_VERIFIER_TYPE = os.getenv("LIVENESS_VERIFIER_TYPE", "mediapipe")
+LIVENESS_VERIFIER_TYPE = os.getenv("LIVENESS_VERIFIER_TYPE", "new_face_system")
 
 # ---------- ATTENDANCE AGENT SETTINGS ----------
 # URL of the local Attendance Agent HTTP server

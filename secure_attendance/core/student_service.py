@@ -7,29 +7,14 @@ from core.models import StudentProfile, User, Device
 
 logger = logging.getLogger(__name__)
 
-# Singletons for PyTorch face models (warmed up on demand, kept in memory)
-_MTCNN_INSTANCE = None
-_RESNET_INSTANCE = None
-
 
 def get_face_models():
     """
-    Thread-safe singleton loader for MTCNN and InceptionResnetV1.
-    Prevents costly model instantiation overhead on every HTTP request.
+    Returns (mtcnn, resnet) from the singleton FaceSystemEngine.
     """
-    global _MTCNN_INSTANCE, _RESNET_INSTANCE
-    if _MTCNN_INSTANCE is None or _RESNET_INSTANCE is None:
-        import torch
-        from PIL import Image
-        from facenet_pytorch import MTCNN, InceptionResnetV1
-
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        logger.info("Initializing PyTorch face detection & extraction models on %s", device)
-
-        _MTCNN_INSTANCE = MTCNN(image_size=160, margin=0, device=device)
-        _RESNET_INSTANCE = InceptionResnetV1(pretrained='vggface2').eval().to(device)
-
-    return _MTCNN_INSTANCE, _RESNET_INSTANCE
+    from core.face_system.engine import FaceSystemEngine
+    engine = FaceSystemEngine.get_instance()
+    return engine.mtcnn, engine.resnet
 
 
 class FaceEmbeddingCache:
@@ -99,7 +84,7 @@ def register_student_face_embedding(user: User, embedding_np: np.ndarray) -> Tup
         return False, f"Registration error: {str(e)}"
 
 
-def verify_student_face(user_id: str, candidate_embedding_np: np.ndarray, threshold: float = 0.7) -> Tuple[bool, float, str]:
+def verify_student_face(user_id: str, candidate_embedding_np: np.ndarray, threshold: float = 0.65) -> Tuple[bool, float, str]:
     """
     Fast O(1) face verification using normalized dot product against in-memory cache.
     """
@@ -108,7 +93,6 @@ def verify_student_face(user_id: str, candidate_embedding_np: np.ndarray, thresh
         return False, 0.0, "No face profile registered for this student."
 
     cand_norm = normalize_embedding(candidate_embedding_np)
-    # Cosine similarity between unit vectors is simple dot product
     similarity = float(np.dot(stored_emb, cand_norm))
 
     if similarity >= threshold:
@@ -144,5 +128,3 @@ def register_device(student: User = None, public_key: str = "", fingerprint_hash
         public_key=key,
         fingerprint_hash=fingerprint_hash,
     )
-
-
