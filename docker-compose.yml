@@ -8,7 +8,7 @@ services:
     container_name: secure_attendance_web
     restart: always
     environment:
-      - DEBUG=False
+      - DEBUG=${DEBUG:-True}
       - DB_HOST=db
       - DB_NAME=${DB_NAME:-attendance_db}
       - DB_USER=${DB_USER:-postgres}
@@ -20,12 +20,14 @@ services:
       - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-192-168-137-1.sslip.io}
       - WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME:-Secure Attendance System}
       - WEBAUTHN_ORIGIN=${WEBAUTHN_ORIGIN:-https://192-168-137-1.sslip.io:8000}
+      - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS:-}
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
     volumes:
+      - ./secure_attendance:/app/secure_attendance
       - static_volume:/app/secure_attendance/static
       - media_volume:/app/secure_attendance/embeddings
 
