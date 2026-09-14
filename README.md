@@ -71,107 +71,108 @@ The **Secure Attendance Platform (V3)** is a zero-trust attendance platform that
 
 ## 3. The 5-Layer Zero-Trust Security Blueprint
 
-```
-                     ┌──────────────────────────────────────────────────┐
-                     │          STUDENT ATTEMPTS ATTENDANCE             │
-                     └────────────────────────┬─────────────────────────┘
-                                              │
-                                              ▼
- ┌──────────────────────────────────────────────────────────────────────────────────────────────┐
- │ LAYER 1: Physical Proximity Verification (Classroom Hotspot)                                 │
- │  - Student connects phone to Professor's Laptop Hotspot (192.168.137.1).                     │
- │  - Fetches ephemeral HMAC-SHA256 challenge nonce (30s TTL, RAM-only secret).                 │
- │  - Zero Root CA: plain HTTP on local link bypasses mobile certificate warnings.              │
- └────────────────────────────────────────────┬─────────────────────────────────────────────────┘
-                                              │ Nonce Obtained
-                                              ▼
- ┌──────────────────────────────────────────────────────────────────────────────────────────────┐
- │ LAYER 2: Multi-Frame Liveness & Anti-Spoofing Evaluation                                      │
- │  - Front camera captures 7 temporal burst frames (~1.2 second window).                       │
- │  - Server MiniFASNet ensemble (Scale 2.7x + Scale 4.0x SE) rejects screens/photos.           │
- │  - Geometric facial tilt ($>30^\circ$) and distance ratio ($>38\%$) filters reject spoofing.  │
- └────────────────────────────────────────────┬─────────────────────────────────────────────────┘
-                                              │ Liveness Confirmed (Live Face)
-                                              ▼
- ┌──────────────────────────────────────────────────────────────────────────────────────────────┐
- │ LAYER 3: Deep Metric Biometric Face Recognition                                              │
- │  - Verified live frame processed by InceptionResNetV1 (FaceNet).                             │
- │  - Generates 512-dimensional normalized embedding vector.                                    │
- │  - Cosine similarity matching against enrolled student profile (Threshold >= 0.65).          │
- └────────────────────────────────────────────┬─────────────────────────────────────────────────┘
-                                              │ Biometric Identity Matched
-                                              ▼
- ┌──────────────────────────────────────────────────────────────────────────────────────────────┐
- │ LAYER 4: FIDO2 / WebAuthn Hardware Passkey Assertion                                         │
- │  - Server issues one-time WebAuthn challenge bound to Relying Party ID (`RP_ID`).            │
- │  - Native biometric prompt triggered on student phone (Touch ID / Face ID / Android Titan).  │
- │  - Hardware Secure Enclave signs challenge with non-exportable private key.                  │
- └────────────────────────────────────────────┬─────────────────────────────────────────────────┘
-                                              │ Passkey Assertion Validated
-                                              ▼
- ┌──────────────────────────────────────────────────────────────────────────────────────────────┐
- │ LAYER 5: Tamper-Evident SHA-256 Cryptographic Audit Ledger                                   │
- │  - Attendance record created in PostgreSQL.                                                  │
- │  - Appends to immutable hash chain: H_n = SHA256(H_{n-1} || Record_n).                       │
- │  - Signed with Professor's asymmetric ECDSA/Ed25519 keypair.                                 │
- └────────────────────────────────────────────┬─────────────────────────────────────────────────┘
-                                              │
-                                              ▼
-                     ┌──────────────────────────────────────────────────┐
-                     │          ATTENDANCE RECORDED & SECURED           │
-                     └──────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    classDef startNode fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#ffffff,font-weight:bold;
+    classDef layerCard fill:#0f172a,stroke:#475569,stroke-width:1.5px,color:#f8fafc;
+    classDef passNode fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#ffffff,font-weight:bold;
+    classDef rejectNode fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#ffffff;
+
+    Start([👤 Student Initiates Attendance]) :::startNode --> L1
+
+    subgraph L1 ["🛡️ Layer 1: Physical Proximity (LAN Hotspot)"]
+        direction TB
+        L1_Desc["• Connects to Professor Wi-Fi Hotspot (192.168.137.1)<br/>• Fetches ephemeral HMAC-SHA256 challenge (30s TTL)<br/>• Plain HTTP on LAN (Zero Root CA required)"]
+    end
+    L1 -->|Valid LAN Nonce| L2
+    L1 -.->|Out of Range / Remote Proxy| R1[❌ Reject: Proximity Failure]:::rejectNode
+
+    subgraph L2 ["👁️ Layer 2: Multi-Frame Liveness & Anti-Spoofing"]
+        direction TB
+        L2_Desc["• Captures 7 temporal burst frames (~1.2s window)<br/>• Dual MiniFASNet Ensemble (Scale 2.7x + 4.0x SE)<br/>• Roll Angle Tilt Guard (&le; 30°) & Distance Ratio Check"]
+    end
+    L2 -->|Live Genuine Face| L3
+    L2 -.->|Print / Screen / Deepfake| R2[❌ Reject: Presentation Attack]:::rejectNode
+
+    subgraph L3 ["🧬 Layer 3: Deep Metric Biometric Matching"]
+        direction TB
+        L3_Desc["• InceptionResNetV1 (FaceNet) 512-d unit vector<br/>• Cosine Similarity vs Enrolled Profile<br/>• Match Threshold: Similarity &ge; 0.65"]
+    end
+    L3 -->|Biometric Match Confirmed| L4
+    L3 -.->|Wrong Face / Impersonator| R3[❌ Reject: Identity Mismatch]:::rejectNode
+
+    subgraph L4 ["🔑 Layer 4: FIDO2 / WebAuthn Hardware Passkey"]
+        direction TB
+        L4_Desc["• Server issues cryptographic WebAuthn challenge<br/>• Hardware Secure Enclave (Touch ID / Face ID / PIN)<br/>• Signs challenge with non-exportable private key"]
+    end
+    L4 -->|Hardware Assertion Verified| L5
+    L4 -.->|Invalid Signature / Proxy Device| R4[❌ Reject: Auth Failure]:::rejectNode
+
+    subgraph L5 ["⛓️ Layer 5: Tamper-Evident Audit Ledger"]
+        direction TB
+        L5_Desc["• Appends to SHA-256 Hash Chain: H_n = SHA256(H_n-1 || Record_n)<br/>• Cryptographically signed with Professor Ed25519 Key<br/>• Real-time Merkle root integrity verification"]
+    end
+    L5 --> Success([✅ Attendance Recorded & Sealed in Ledger]):::passNode
 ```
 
 ---
 
 ## 4. High-Level System Architecture
 
-The system is partitioned into three distinct operational domains:
+```mermaid
+flowchart TB
+    classDef cloudBox fill:#0b1329,stroke:#38bdf8,stroke-width:2px,color:#ffffff;
+    classDef agentBox fill:#0d1f2d,stroke:#34d399,stroke-width:2px,color:#ffffff;
+    classDef phoneBox fill:#1e1b4b,stroke:#a78bfa,stroke-width:2px,color:#ffffff;
+    classDef component fill:#1e293b,stroke:#64748b,stroke-width:1px,color:#f8fafc;
+    classDef db fill:#172554,stroke:#60a5fa,stroke-width:1.5px,color:#ffffff;
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                   AWS EC2 CLOUD INFRASTRUCTURE                                  │
-│                                                                                                 │
-│   ┌─────────────────────────────────────────────────────────────────────────────────────────┐   │
-│   │ Caddy Web Server (Reverse Proxy :80 / :443)                                             │   │
-│   │  - Automatic Let's Encrypt TLS Certificate Provisioning                                 │   │
-│   │  - SSL Termination & Modern Cipher Suites                                               │   │
-│   └────────────────────────────────────────────┬────────────────────────────────────────────┘   │
-│                                                │ Proxy (localhost:8000)                         │
-│   ┌────────────────────────────────────────────▼────────────────────────────────────────────┐   │
-│   │ Django Application Server (Gunicorn WSGI :8000)                                         │   │
-│   │  - RESTful Attendance API Endpoints & RBAC (Professors, Students, Admins)               │   │
-│   │  - MiniFASNet V1SE/V2 Anti-Spoofing Engine & InceptionResNetV1 FaceNet Pipeline         │   │
-│   │  - FIDO2 / WebAuthn Challenge-Response Service & Token Validation                       │   │
-│   │  - SHA-256 Audit Chain Verification & Ledger Integrity Reporter                        │   │
-│   └────────────────────────────────────────────┬────────────────────────────────────────────┘   │
-│                                                │ TCP :5432                                      │
-│   ┌────────────────────────────────────────────▼────────────────────────────────────────────┐   │
-│   │ PostgreSQL 16 Database with pgvector Extension                                          │   │
-│   │  - Relational Models, Audit Logs, Credentials & 512-d Face Embeddings                   │   │
-│   └─────────────────────────────────────────────────────────────────────────────────────────┘   │
-└────────────────────────────────────────────────┬────────────────────────────────────────────────┘
-                                                 │ HTTPS (WAN / Internet via Domain / sslip.io)
-                                                 │
-┌────────────────────────────────────────────────┴────────────────────────────────────────────────┐
-│                              PROFESSOR LAPTOP (CLASSROOM HOST)                                  │
-│                                                                                                 │
-│   ┌─────────────────────────────────────────────────────────────────────────────────────────┐   │
-│   │ Attendance Agent (Python Daemon :5000)                                                  │   │
-│   │  - Ed25519 Cryptographic Identity Pair (`~/.secure_attendance/`)                       │   │
-│   │  - Ephemeral HMAC-SHA256 Challenge Generator (RAM-only secrets, 30s TTL)                │   │
-│   │  - Outbound Registration & Background Heartbeat Channel to Cloud Django                 │   │
-│   └────────────────────────────────────────────┬────────────────────────────────────────────┘   │
-│                                                │ Local Wi-Fi Hotspot LAN Only                   │
-│                                                │ (http://192.168.137.1:5000)                    │
-└────────────────────────────────────────────────┼────────────────────────────────────────────────┘
-                                                 │
-                                  ┌──────────────┴──────────────┐
-                                  │     STUDENT SMARTPHONES     │
-                                  │  - Mobile Safari / Chrome   │
-                                  │  - Front Camera (7 Frames)  │
-                                  │  - Biometric Secure Enclave │
-                                  └─────────────────────────────┘
+    subgraph CLOUD ["☁️ AWS EC2 Cloud Infrastructure (Ubuntu 24.04 LTS)"]
+        direction TB
+        
+        subgraph CADDY ["🌐 Caddy Web Server (Reverse Proxy :80 / :443)"]
+            CAD_SSL["• Automated Let's Encrypt TLS<br/>• SSL Termination & Header Rewriting"]:::component
+        end
+
+        subgraph DJANGO ["⚙️ Django 5.2 Application Server (Gunicorn WSGI :8000)"]
+            DJ_CORE["• REST Attendance & Session API<br/>• Role-Based Access Control (RBAC)"]:::component
+            DJ_AI["• FaceNet 512-d Face Recognition<br/>• Dual MiniFASNet Anti-Spoofing Engine"]:::component
+            DJ_WA["• WebAuthn / FIDO2 Relying Party<br/>• Monotonic Counter Verification"]:::component
+            DJ_LEDGER["• SHA-256 Hash Chain Audit Engine<br/>• Cryptographic Ledger Validator"]:::component
+        end
+
+        subgraph DATABASE ["🗄️ PostgreSQL 16 Database + pgvector (:5432)"]
+            DB_DATA["• Student Profiles & 512-d Embeddings<br/>• WebAuthn Public Keys & Counters<br/>• Cryptographic Audit Entries & Roots"]:::db
+        end
+
+        CAD_SSL -->|Proxy localhost:8000| DJ_CORE
+        DJANGO <-->|TCP :5432 Relational & Vectors| DATABASE
+    end
+
+    subgraph HOST ["💻 Professor Laptop (Classroom Host Node)"]
+        direction TB
+        
+        subgraph AGENT ["⚡ Attendance Agent Daemon (Python :5000)"]
+            AG_KEY["• Ed25519 Asymmetric Identity Pair<br/>• Private Key in ~/.secure_attendance/"]:::component
+            AG_CHAL["• RAM-Only Session Secret Store<br/>• Ephemeral HMAC-SHA256 Challenge Nonces"]:::component
+            AG_HB["• Background Heartbeat Emitter<br/>• Session Registration Client"]:::component
+        end
+    end
+
+    subgraph CLIENTS ["📱 Student Smartphones (Mobile Edge)"]
+        direction TB
+        
+        subgraph PHONE ["Browser & Hardware Enclave"]
+            CL_BROWSER["• Mobile Safari / Chrome UI<br/>• WebAuthn JS API Client"]:::component
+            CL_CAM["• Front Camera Video Burst<br/>• 7 Temporal Frame Collector"]:::component
+            CL_ENCLAVE["• Apple Secure Enclave / Android StrongBox<br/>• Non-Exportable FIDO2 Private Key"]:::component
+        end
+    end
+
+    %% Network Connections
+    HOST <==>|"1. HTTPS Heartbeat & Registration (WAN)"| CLOUD
+    PHONE <==>|"2. HTTPS WebAuthn & Face Verification (WAN via Domain)"| CLOUD
+    PHONE <==>|"3. HTTP Ephemeral Challenge Fetch (Classroom Wi-Fi Hotspot LAN :5000)"| HOST
 ```
 
 ---
