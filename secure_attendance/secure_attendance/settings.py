@@ -29,7 +29,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "t", "yes")
+DEBUG = True
+CSRF_FAILURE_VIEW = 'core.views.csrf_failure_view'
 
 LOGGING = {
     'version': 1,

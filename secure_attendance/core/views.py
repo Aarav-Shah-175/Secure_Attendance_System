@@ -76,6 +76,36 @@ def logout_view(request):
     return redirect("login")
 
 
+def csrf_failure_view(request, reason=""):
+    from django.conf import settings
+    debug_info = {
+        "reason": reason,
+        "origin": request.META.get("HTTP_ORIGIN", "<none>"),
+        "referer": request.META.get("HTTP_REFERER", "<none>"),
+        "host": request.get_host(),
+        "cookies": list(request.COOKIES.keys()),
+        "trusted_origins": getattr(settings, "CSRF_TRUSTED_ORIGINS", []),
+    }
+    logger.warning("CSRF Failure: %s | Info: %s", reason, debug_info)
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head><title>CSRF Debug Info</title>
+    <style>body{{font-family:monospace;padding:2rem;background:#1e1e2e;color:#cdd6f4;}}
+    pre{{background:#11111b;padding:1rem;border-radius:8px;border:1px solid #45475a;color:#a6e3a1;overflow:auto;}}
+    h2{{color:#f38ba8;}}</style>
+    </head>
+    <body>
+    <h2>⚠️ CSRF Verification Failed (Debug Diagnostics)</h2>
+    <p><b>Reason:</b> {reason}</p>
+    <pre>{json.dumps(debug_info, indent=2)}</pre>
+    <p><a href="/" style="color:#89b4fa;">&larr; Back to Login</a></p>
+    </body>
+    </html>
+    """
+    return HttpResponse(html, status=403)
+
+
 @login_required
 def teacher_dashboard(request):
     if request.user.role != "professor":
