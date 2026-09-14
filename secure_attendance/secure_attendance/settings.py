@@ -199,6 +199,22 @@ WEBAUTHN_RP_ID = os.getenv("WEBAUTHN_RP_ID", "192-168-137-1.sslip.io")
 WEBAUTHN_RP_NAME = os.getenv("WEBAUTHN_RP_NAME", "Secure Attendance System")
 WEBAUTHN_ORIGIN = os.getenv("WEBAUTHN_ORIGIN", "https://192-168-137-1.sslip.io:8000")
 
+# Automatically trust origins derived from WEBAUTHN_RP_ID and WEBAUTHN_ORIGIN
+if WEBAUTHN_ORIGIN and WEBAUTHN_ORIGIN not in CSRF_TRUSTED_ORIGINS:
+    CSRF_TRUSTED_ORIGINS.append(WEBAUTHN_ORIGIN)
+if WEBAUTHN_RP_ID:
+    for scheme in ("http://", "https://"):
+        for port_suffix in (":8000", ""):
+            entry = f"{scheme}{WEBAUTHN_RP_ID}{port_suffix}"
+            if entry not in CSRF_TRUSTED_ORIGINS:
+                CSRF_TRUSTED_ORIGINS.append(entry)
+
+CSRF_COOKIE_SECURE = False
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SAMESITE = 'Lax'
+
 # Cache backend for rate limiting & ephemeral challenges
 CACHES = {
     'default': {
