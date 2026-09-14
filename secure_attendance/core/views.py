@@ -4,60 +4,13 @@ import base64
 import csv
 import logging
 import ipaddress
-from django.shortcuts import render, redirect #type: ignore
-from django.contrib.auth import authenticate, login, logout #type: ignore
-from django.contrib.auth.decorators import login_required #type: ignore
-from django.http import JsonResponse, HttpResponse #type: ignore
-from django.utils import timezone #type: ignore
-from django.views.decorators.csrf import csrf_exempt
-from openpyxl import Workbook
-
-from core.models import (
-    AttendanceSession,
-    AttendanceRecord,
-    PasskeyCredential,
-    AttendanceAttempt,
-    AttendanceAgent,
-    SecurityMode
-)
-from core.session_service import create_attendance_session
-from core.attendance_service import verify_session_integrity
-from core.student_service import (
-    get_face_models,
-    register_student_face_embedding,
-    verify_student_face,
-    revoke_student_face
-)
-from core.rate_limit import rate_limit_request
-from core.presence_service import record_presence_heartbeat
-from core.secure_presence_v2_service import (
-    start_attendance_attempt,
-    process_liveness_verification,
-    issue_signing_challenge_v2,
-    submit_attendance_v2
-)
-from core.webauthn_service import (
-    generate_passkey_registration_options,
-    verify_passkey_registration
-)
-from core.audit_service import verify_v2_session_integrity, close_session_audit_root
-from core.liveness_challenge_service import issue_liveness_challenge, verify_liveness_nonce
-
-logger = logging.getLogger(__name__)
-
-
-import os
-import json
-import base64
-import csv
-import logging
-import ipaddress
 from datetime import timedelta
-from django.shortcuts import render, redirect #type: ignore
-from django.contrib.auth import authenticate, login, logout #type: ignore
-from django.contrib.auth.decorators import login_required #type: ignore
-from django.http import JsonResponse, HttpResponse #type: ignore
-from django.utils import timezone #type: ignore
+from django.shortcuts import render, redirect
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.decorators import login_required
+from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
+from django.http import JsonResponse, HttpResponse
+from django.utils import timezone
 from openpyxl import Workbook
 
 from core.models import (
@@ -78,6 +31,7 @@ from core.student_service import (
     verify_student_face,
     revoke_student_face
 )
+from core.face_system.engine import FaceSystemEngine
 from core.rate_limit import rate_limit_request
 from core.presence_service import record_presence_heartbeat
 from core.secure_presence_v2_service import (
@@ -99,6 +53,8 @@ logger = logging.getLogger(__name__)
 
 # ---------- AUTH & DASHBOARD VIEWS ----------
 
+@csrf_exempt
+@ensure_csrf_cookie
 @rate_limit_request(key_prefix="login", limit=10, window_seconds=60)
 def login_view(request):
     if request.method == "POST":
@@ -121,6 +77,36 @@ def login_view(request):
 def logout_view(request):
     logout(request)
     return redirect("login")
+
+
+def csrf_failure_view(request, reason=""):
+    from django.conf import settings
+    debug_info = {
+        "reason": reason,
+        "origin": request.META.get("HTTP_ORIGIN", "<none>"),
+        "referer": request.META.get("HTTP_REFERER", "<none>"),
+        "host": request.get_host(),
+        "cookies": list(request.COOKIES.keys()),
+        "trusted_origins": getattr(settings, "CSRF_TRUSTED_ORIGINS", []),
+    }
+    logger.warning("CSRF Failure: %s | Info: %s", reason, debug_info)
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head><title>CSRF Debug Info</title>
+    <style>body{{font-family:monospace;padding:2rem;background:#1e1e2e;color:#cdd6f4;}}
+    pre{{background:#11111b;padding:1rem;border-radius:8px;border:1px solid #45475a;color:#a6e3a1;overflow:auto;}}
+    h2{{color:#f38ba8;}}</style>
+    </head>
+    <body>
+    <h2>⚠️ CSRF Verification Failed (Debug Diagnostics)</h2>
+    <p><b>Reason:</b> {reason}</p>
+    <pre>{json.dumps(debug_info, indent=2)}</pre>
+    <p><a href="/" style="color:#89b4fa;">&larr; Back to Login</a></p>
+    </body>
+    </html>
+    """
+    return HttpResponse(html, status=403)
 
 
 @login_required
@@ -391,14 +377,16 @@ def register_face(request):
 
     try:
         data = json.loads(request.body)
-        image_data = data["image"].split(",")[1]
+        raw_image = data.get("image", "")
+        if "," in raw_image:
+            image_data = raw_image.split(",", 1)[1]
+        else:
+            image_data = raw_image
+
         image_bytes = base64.b64decode(image_data)
 
-        import cv2 #type: ignore
+        import cv2
         import numpy as np
-        from PIL import Image #type: ignore
-
-        mtcnn, resnet = get_face_models()
 
         np_img = np.frombuffer(image_bytes, np.uint8)
         frame = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
@@ -406,27 +394,17 @@ def register_face(request):
         if frame is None:
             return JsonResponse({"status": "fail", "message": "Invalid image payload"})
 
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        img = Image.fromarray(frame_rgb)
+        engine = FaceSystemEngine.get_instance()
+        embedding_np = engine.extract_face_embedding(frame)
 
-        face = mtcnn(img)
-        if face is None:
+        if embedding_np is None:
             return JsonResponse({"status": "fail", "message": "No face detected in frame. Align face clearly."})
 
-        import torch #type: ignore
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        face_tensor = face.unsqueeze(0).to(device)
-
-        with torch.no_grad():
-            embedding = resnet(face_tensor)
-
-        embedding_np = embedding.cpu().numpy()
         success, msg = register_student_face_embedding(request.user, embedding_np)
-
         return JsonResponse({"status": "success" if success else "fail", "message": msg})
 
     except Exception as e:
-        logger.error("Error during face registration: %s", str(e))
+        logger.error("Error during face registration: %s", str(e), exc_info=True)
         return JsonResponse({"status": "fail", "message": "Face registration error"}, status=500)
 
 
@@ -441,14 +419,16 @@ def face_verify(request):
 
     try:
         data = json.loads(request.body)
-        image_data = data["image"].split(",")[1]
+        raw_image = data.get("image", "")
+        if "," in raw_image:
+            image_data = raw_image.split(",", 1)[1]
+        else:
+            image_data = raw_image
+
         image_bytes = base64.b64decode(image_data)
 
-        import cv2 #type: ignore
+        import cv2
         import numpy as np
-        from PIL import Image #type: ignore
-
-        mtcnn, resnet = get_face_models()
 
         np_img = np.frombuffer(image_bytes, np.uint8)
         frame = cv2.imdecode(np_img, cv2.IMREAD_COLOR)
@@ -456,22 +436,13 @@ def face_verify(request):
         if frame is None:
             return JsonResponse({"status": "fail", "message": "Invalid image payload"})
 
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        img = Image.fromarray(frame_rgb)
+        engine = FaceSystemEngine.get_instance()
+        embedding_np = engine.extract_face_embedding(frame)
 
-        face = mtcnn(img)
-        if face is None:
+        if embedding_np is None:
             return JsonResponse({"status": "fail", "message": "No face detected"})
 
-        import torch #type: ignore
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        face_tensor = face.unsqueeze(0).to(device)
-
-        with torch.no_grad():
-            embedding = resnet(face_tensor)
-
-        embedding_np = embedding.cpu().numpy()
-        match_ok, score, msg = verify_student_face(str(request.user.id), embedding_np, threshold=0.7)
+        match_ok, score, msg = verify_student_face(str(request.user.id), embedding_np, threshold=0.65)
 
         if match_ok:
             return JsonResponse({"status": "success", "score": score})
@@ -479,7 +450,7 @@ def face_verify(request):
             return JsonResponse({"status": "fail", "message": msg, "score": score})
 
     except Exception as e:
-        logger.error("Error during face verification: %s", str(e))
+        logger.error("Error during face verification: %s", str(e), exc_info=True)
         return JsonResponse({"status": "fail", "message": "Verification error"}, status=500)
 
 
@@ -504,7 +475,7 @@ def passkey_register_options_view(request):
         return JsonResponse({"error": "Unauthorized"}, status=403)
 
     try:
-        options_dict, challenge_b64url = generate_passkey_registration_options(request.user)
+        options_dict, challenge_b64url = generate_passkey_registration_options(request.user, request=request)
         request.session["passkey_reg_challenge"] = challenge_b64url
         return JsonResponse(options_dict)
     except Exception as e:
@@ -527,7 +498,8 @@ def passkey_register_verify_view(request):
         success, passkey, message = verify_passkey_registration(
             user=request.user,
             credential_payload=payload,
-            expected_challenge=expected_challenge
+            expected_challenge=expected_challenge,
+            request=request
         )
         if success:
             request.session.pop("passkey_reg_challenge", None)
@@ -625,32 +597,40 @@ def liveness_challenge_view(request):
 @login_required
 @rate_limit_request(key_prefix="v2_verify_liveness", limit=5, window_seconds=60)
 def verify_liveness_v2_view(request):
-    """POST — Verify the HMAC nonce echoed back by the client after completing the challenge."""
+    """
+    POST — Verify face recognition and anti-spoofing liveness for an attendance attempt.
+    Accepts:
+      - Multi-frame burst payload: { "attempt_id": "...", "frames": ["base64_1", "base64_2", ...] }
+      - Single-frame payload: { "attempt_id": "...", "image": "base64..." }
+      - Or legacy nonce payload (if configured for mediapipe)
+    """
     if request.user.role != "student":
         return JsonResponse({"error": "Unauthorized"}, status=403)
 
     try:
-        data = json.loads(request.body.decode("utf-8"))
+        raw_body = request.body.decode("utf-8")
+        data = json.loads(raw_body)
         attempt_id = data.get("attempt_id")
-        nonce = data.get("nonce", "")
+        if not attempt_id:
+            return JsonResponse({"status": "error", "message": "attempt_id required"}, status=400)
 
-        # Validate the nonce (proves the client received a genuine server challenge)
-        nonce_ok, nonce_reason = verify_liveness_nonce(attempt_id, nonce)
-        if not nonce_ok:
-            logger.warning(
-                "Liveness nonce validation failed attempt=%s reason=%s user=%s",
-                attempt_id, nonce_reason, request.user.id
-            )
-            return JsonResponse(
-                {"status": "error", "message": f"Liveness check failed: {nonce_reason}"},
-                status=400
-            )
+        # Check for legacy mediapipe nonce mode if verifier configured as mediapipe
+        from django.conf import settings as _s
+        if getattr(_s, "LIVENESS_VERIFIER_TYPE", "new_face_system") == "mediapipe":
+            nonce = data.get("nonce", "")
+            nonce_ok, nonce_reason = verify_liveness_nonce(attempt_id, nonce)
+            if not nonce_ok:
+                logger.warning("Liveness nonce failed attempt=%s reason=%s user=%s", attempt_id, nonce_reason, request.user.id)
+                return JsonResponse({"status": "error", "message": f"Liveness check failed: {nonce_reason}"}, status=400)
+            image_payload = "nonce_verified"
+        else:
+            # Production pipeline: pass entire JSON payload (containing frames or image)
+            image_payload = raw_body
 
-        # Pass a sentinel image payload — nonce-based verifier does not need image bytes
         success, verification, message = process_liveness_verification(
             attempt_id=attempt_id,
             user=request.user,
-            image_payload="nonce_verified"
+            image_payload=image_payload
         )
 
         return JsonResponse({
@@ -658,7 +638,7 @@ def verify_liveness_v2_view(request):
             "message": message
         }, status=200 if success else 400)
     except Exception as e:
-        logger.error("Liveness verification endpoint error: %s", str(e))
+        logger.error("Liveness verification endpoint error: %s", str(e), exc_info=True)
         return JsonResponse({"error": "Liveness verification processing error"}, status=500)
 
 
@@ -674,7 +654,8 @@ def passkey_authenticate_options_view(request):
 
         success, options_dict, message = issue_signing_challenge_v2(
             attempt_id=attempt_id,
-            user=request.user
+            user=request.user,
+            request=request
         )
 
         if success:
@@ -705,7 +686,8 @@ def submit_attendance_v2_view(request):
             user=request.user,
             attempt_id=attempt_id,
             credential_payload=credential_payload,
-            client_ip=client_ip
+            client_ip=client_ip,
+            request=request
         )
 
         return JsonResponse({
@@ -736,7 +718,7 @@ def revoke_passkey_v2_view(request, passkey_id):
 
 def _require_agent_token(request) -> bool:
     """Return True if the request carries the valid agent bearer token."""
-    from django.conf import settings as _s #type: ignore
+    from django.conf import settings as _s
     token = _s.ATTENDANCE_AGENT_API_TOKEN
     if not token:
         return False
@@ -744,7 +726,6 @@ def _require_agent_token(request) -> bool:
     return auth == f"Bearer {token}"
 
 
-@csrf_exempt
 def agent_register_view(request):
     """
     POST /agent/register/
@@ -772,7 +753,6 @@ def agent_register_view(request):
     return JsonResponse({"status": "ok", "action": action, "agent_id": agent_id})
 
 
-@csrf_exempt
 def agent_heartbeat_view(request):
     """
     POST /agent/heartbeat/
@@ -808,7 +788,6 @@ def agent_heartbeat_view(request):
     return JsonResponse({"status": "ok", "session_id": session_id})
 
 
-@csrf_exempt
 def agent_stop_session_view(request):
     """
     POST /agent/stop-session/
@@ -829,35 +808,3 @@ def agent_stop_session_view(request):
     updated = AttendanceSession.objects.filter(id=session_id, active=True).update(active=False)
     logger.info("Agent stop-session: session_id=%s updated=%d", session_id, updated)
     return JsonResponse({"status": "ok", "session_id": session_id, "closed": bool(updated)})
-
-
-@csrf_exempt
-def agent_sync_view(request):
-    """
-    POST /agent/sync/
-    Attendance Agent pings Django to fetch active sessions and secrets.
-    Body: { agent_id }
-    """
-    if request.method != "POST":
-        return JsonResponse({"error": "Method not allowed"}, status=405)
-    if not _require_agent_token(request):
-        return JsonResponse({"error": "Unauthorized"}, status=401)
-
-    from django.core.cache import cache
-    active_sessions = AttendanceSession.objects.filter(
-        active=True,
-        expiry__gt=timezone.now()
-    )
-
-    session_list = []
-    for s in active_sessions:
-        secret_hex = cache.get(f"session_secret:{s.id}", "")
-        session_list.append({
-            "session_id": str(s.id),
-            "session_secret_hex": secret_hex,
-            "expires_at": s.expiry.timestamp(),
-            "course_code": s.course_code,
-            "agent_id": s.agent_id,
-        })
-
-    return JsonResponse({"status": "ok", "sessions": session_list})

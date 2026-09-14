@@ -16,19 +16,34 @@ from webauthn.helpers.structs import (  #type: ignore
 ) 
 
 
-def get_rp_id() -> str:
-    return getattr(settings, "WEBAUTHN_RP_ID", "localhost")
+import re
+
+def get_rp_id(request=None) -> str:
+    if request:
+        try:
+            host = request.get_host().split(":")[0]
+            if not re.match(r"^\d+\.\d+\.\d+\.\d+$", host):
+                return host
+        except Exception:
+            pass
+    return getattr(settings, "WEBAUTHN_RP_ID", "192-168-137-1.sslip.io")
 
 
 def get_rp_name() -> str:
     return getattr(settings, "WEBAUTHN_RP_NAME", "Secure Attendance System")
 
 
-def get_origin() -> str:
-    return getattr(settings, "WEBAUTHN_ORIGIN", "https://localhost:8000")
+def get_origin(request=None) -> str:
+    if request:
+        try:
+            scheme = "https" if request.is_secure() else "http"
+            return f"{scheme}://{request.get_host()}"
+        except Exception:
+            pass
+    return getattr(settings, "WEBAUTHN_ORIGIN", "https://192-168-137-1.sslip.io:8000")
 
 
-def generate_passkey_registration_options(user: User) -> Tuple[Dict[str, Any], str]:
+def generate_passkey_registration_options(user: User, request=None) -> Tuple[Dict[str, Any], str]:
     """
     Generates WebAuthn registration options for a student.
     Returns (options_dict, challenge_b64url).
@@ -36,24 +51,30 @@ def generate_passkey_registration_options(user: User) -> Tuple[Dict[str, Any], s
     user_id_bytes = str(user.id).encode("utf-8")
     
     existing_passkeys = PasskeyCredential.objects.filter(student=user, revoked=False)
-    exclude_credentials = [
-        PublicKeyCredentialDescriptor(
-            id=base64.b64decode(p.credential_id),
-            type=PublicKeyCredentialType.PUBLIC_KEY
-        )
-        for p in existing_passkeys
-        if p.credential_id
-    ]
+    exclude_credentials = []
+    for p in existing_passkeys:
+        if p.credential_id:
+            try:
+                padded_id = p.credential_id + "=" * ((4 - len(p.credential_id) % 4) % 4)
+                cred_id_bytes = base64.urlsafe_b64decode(padded_id)
+                exclude_credentials.append(
+                    PublicKeyCredentialDescriptor(
+                        id=cred_id_bytes,
+                        type=PublicKeyCredentialType.PUBLIC_KEY
+                    )
+                )
+            except Exception:
+                continue
 
     options = webauthn.generate_registration_options(
-        rp_id=get_rp_id(),
+        rp_id=get_rp_id(request),
         rp_name=get_rp_name(),
         user_id=user_id_bytes,
         user_name=user.email,
         user_display_name=user.email,
         exclude_credentials=exclude_credentials if exclude_credentials else None,
         authenticator_selection=AuthenticatorSelectionCriteria(
-            user_verification=UserVerificationRequirement.REQUIRED
+            user_verification=UserVerificationRequirement.PREFERRED
         ),
     )
 
@@ -65,7 +86,8 @@ def generate_passkey_registration_options(user: User) -> Tuple[Dict[str, Any], s
 def verify_passkey_registration(
     user: User,
     credential_payload: dict,
-    expected_challenge: str
+    expected_challenge: str,
+    request=None
 ) -> Tuple[bool, Optional[PasskeyCredential], str]:
     """
     Verifies browser WebAuthn registration response and creates a PasskeyCredential entity.
@@ -76,9 +98,9 @@ def verify_passkey_registration(
         verification = webauthn.verify_registration_response(
             credential=credential_payload,
             expected_challenge=base64.urlsafe_b64decode(padded_challenge),
-            expected_rp_id=get_rp_id(),
-            expected_origin=get_origin(),
-            require_user_verification=True,
+            expected_rp_id=get_rp_id(request),
+            expected_origin=get_origin(request),
+            require_user_verification=False,
         )
 
         credential_id_b64 = base64.urlsafe_b64encode(verification.credential_id).decode("utf-8").rstrip("=")
@@ -105,7 +127,7 @@ def verify_passkey_registration(
         return False, None, f"Passkey registration failed: {str(e)}"
 
 
-def generate_passkey_authentication_options(user: User) -> Tuple[Dict[str, Any], str]:
+def generate_passkey_authentication_options(user: User, request=None) -> Tuple[Dict[str, Any], str]:
     """
     Generates WebAuthn authentication options for an active student passkey.
     Returns (options_dict, challenge_b64url).
@@ -130,9 +152,9 @@ def generate_passkey_authentication_options(user: User) -> Tuple[Dict[str, Any],
             continue
 
     options = webauthn.generate_authentication_options(
-        rp_id=get_rp_id(),
+        rp_id=get_rp_id(request),
         allow_credentials=allowed_credentials,
-        user_verification=UserVerificationRequirement.REQUIRED,
+        user_verification=UserVerificationRequirement.PREFERRED,
     )
 
     options_dict = json.loads(webauthn.options_to_json(options))
@@ -143,7 +165,8 @@ def generate_passkey_authentication_options(user: User) -> Tuple[Dict[str, Any],
 def verify_passkey_authentication(
     user: User,
     credential_payload: dict,
-    expected_challenge: str
+    expected_challenge: str,
+    request=None
 ) -> Tuple[bool, Optional[PasskeyCredential], str]:
     """
     Verifies browser WebAuthn assertion response against registered student passkeys.
@@ -175,11 +198,11 @@ def verify_passkey_authentication(
         verification = webauthn.verify_authentication_response(
             credential=credential_payload,
             expected_challenge=challenge_bytes,
-            expected_rp_id=get_rp_id(),
-            expected_origin=get_origin(),
+            expected_rp_id=get_rp_id(request),
+            expected_origin=get_origin(request),
             credential_public_key=public_key_bytes,
             credential_current_sign_count=passkey.sign_counter,
-            require_user_verification=True,
+            require_user_verification=False,
         )
 
         passkey.sign_counter = verification.new_sign_count

@@ -6,18 +6,20 @@ services:
     container_name: secure_attendance_web
     restart: always
     environment:
-      - DEBUG=${DEBUG:-False}
+      - DEBUG=${DEBUG:-True}
       - DB_HOST=db
       - DB_NAME=${DB_NAME:-attendance_db}
       - DB_USER=${DB_USER:-postgres}
       - DB_PASSWORD=${DB_PASSWORD:-secure_presence_v3_pass}
       - DB_PORT=5432
       - SECURE_PRESENCE_V2_ENABLED=True
+      - LIVENESS_VERIFIER_TYPE=new_face_system
       - SECRET_KEY=${SECRET_KEY:-django-insecure-production-key-must-be-changed-in-env}
-      - AES_MASTER_KEY=${AES_MASTER_KEY:-dev-aes-master-key-32bytes-long!}
-      - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-13-127-69-218.sslip.io}
+      - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-192-168-137-1.sslip.io}
       - WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME:-Secure Attendance System}
-      - WEBAUTHN_ORIGIN=${WEBAUTHN_ORIGIN:-https://13-127-69-218.sslip.io}
+      - WEBAUTHN_ORIGIN=${WEBAUTHN_ORIGIN:-https://192-168-137-1.sslip.io:8000}
+      - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS:-}
+      - AES_MASTER_KEY=${AES_MASTER_KEY:-}
     ports:
       - "8000:8000"
     depends_on:
@@ -41,30 +43,12 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-attendance_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
-
-  caddy:
-    image: caddy:2-alpine
-    container_name: secure_attendance_caddy
-    restart: always
-    environment:
-      - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-13-127-69-218.sslip.io}
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - web
 
 volumes:
   postgres_data:
   static_volume:
   media_volume:
-  caddy_data:
-  caddy_config:

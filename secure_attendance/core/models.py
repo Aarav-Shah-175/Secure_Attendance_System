@@ -5,7 +5,7 @@ from django.contrib.auth.models import (  # type: ignore
     BaseUserManager,
     PermissionsMixin
 )
-from core.crypto_utils import generate_ecdsa_keypair, aes_encrypt  # type: ignore
+from core.crypto_utils import generate_ecdsa_keypair, aes_encrypt, aes_decrypt  # type: ignore
 
 # ---------------------------------------------------------------------------
 # NOTE ON ARCHITECTURE (v3 — Agent-based network verification)
@@ -94,6 +94,28 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+
+    def get_private_key_pem(self) -> str:
+        """
+        Safely decrypts the ECDSA private key.
+        If decryption fails (due to key rotation, invalid tag, or legacy data),
+        automatically re-generates and persists a fresh keypair.
+        """
+        if not self.private_key_encrypted:
+            priv_pem, pub_pem = generate_ecdsa_keypair()
+            self.private_key_encrypted = aes_encrypt(priv_pem.encode("utf-8"))
+            self.public_key = pub_pem
+            self.save(update_fields=['private_key_encrypted', 'public_key'])
+            return priv_pem
+
+        try:
+            return aes_decrypt(self.private_key_encrypted).decode("utf-8")
+        except Exception:
+            priv_pem, pub_pem = generate_ecdsa_keypair()
+            self.private_key_encrypted = aes_encrypt(priv_pem.encode("utf-8"))
+            self.public_key = pub_pem
+            self.save(update_fields=['private_key_encrypted', 'public_key'])
+            return priv_pem
 
 
 class AttendanceSession(models.Model):

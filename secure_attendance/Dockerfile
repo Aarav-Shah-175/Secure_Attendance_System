@@ -19,8 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy requirements from root
 COPY requirements.txt /app/requirements.txt
 
-# Install CPU-optimized PyTorch first (reduces image size from 2.5GB to ~600MB)
-RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# Install dependencies
+RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy secure_attendance app code into working directory

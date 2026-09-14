@@ -29,62 +29,59 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv("DEBUG") == "True"
+DEBUG = True
+CSRF_FAILURE_VIEW = 'core.views.csrf_failure_view'
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'django.security.csrf': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+    },
+}
 
 ALLOWED_HOSTS = ["*", "localhost",
     "127.0.0.1",
     "192.168.137.1",]
 
-# CSRF Trusted Origins for Cloud Reverse Proxy & WebAuthn
 CSRF_TRUSTED_ORIGINS = [
-    "https://*.sslip.io",
-    "http://*.sslip.io",
-    "https://*.sslip.io:8000",
     "http://*.sslip.io:8000",
-    "https://13-127-69-218.sslip.io",
-    "http://13-127-69-218.sslip.io",
-    "https://13-127-69-218.sslip.io:8000",
-    "http://13-127-69-218.sslip.io:8000",
-    "https://13.127.69.218",
-    "http://13.127.69.218",
-    "https://13.127.69.218:8000",
-    "http://13.127.69.218:8000",
-    "https://127.0.0.1",
-    "http://127.0.0.1",
-    "https://localhost",
+    "https://*.sslip.io:8000",
+    "http://*.sslip.io",
+    "https://*.sslip.io",
+    "http://*.nip.io:8000",
+    "https://*.nip.io:8000",
+    "http://*.nip.io",
+    "https://*.nip.io",
+    "http://192.168.137.1:8000",
+    "https://192.168.137.1:8000",
+    "http://127.0.0.1:8000",
+    "https://127.0.0.1:8000",
+    "http://localhost:8000",
+    "https://localhost:8000",
     "http://localhost",
+    "https://localhost",
 ]
 
-for env_key in ["WEBAUTHN_ORIGIN", "WEBAUTHN_RP_ID", "CSRF_TRUSTED_ORIGINS"]:
-    val = os.getenv(env_key)
-    if val:
-        for item in val.split(","):
-            item = item.strip()
-            if item:
-                if not item.startswith("http://") and not item.startswith("https://"):
-                    CSRF_TRUSTED_ORIGINS.extend([
-                        f"https://{item}",
-                        f"http://{item}",
-                        f"https://{item}:8000",
-                        f"http://{item}:8000",
-                    ])
-                else:
-                    CSRF_TRUSTED_ORIGINS.append(item)
+extra_csrf = os.getenv("CSRF_TRUSTED_ORIGINS")
+if extra_csrf:
+    CSRF_TRUSTED_ORIGINS.extend([origin.strip() for origin in extra_csrf.split(",") if origin.strip()])
 
-CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(CSRF_TRUSTED_ORIGINS))
-
-# Reverse Proxy settings for Caddy / Nginx SSL Termination
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-USE_X_FORWARDED_HOST = True
-USE_X_FORWARDED_PORT = True
-
-# Secure Cookie settings for HTTPS
-CSRF_COOKIE_SECURE = True
-SESSION_COOKIE_SECURE = True
-
-
-
-
 
 
 # Application definition
@@ -203,6 +200,24 @@ WEBAUTHN_RP_ID = os.getenv("WEBAUTHN_RP_ID", "192-168-137-1.sslip.io")
 WEBAUTHN_RP_NAME = os.getenv("WEBAUTHN_RP_NAME", "Secure Attendance System")
 WEBAUTHN_ORIGIN = os.getenv("WEBAUTHN_ORIGIN", "https://192-168-137-1.sslip.io:8000")
 
+# Automatically trust origins derived from WEBAUTHN_RP_ID and WEBAUTHN_ORIGIN
+if WEBAUTHN_ORIGIN and WEBAUTHN_ORIGIN not in CSRF_TRUSTED_ORIGINS:
+    CSRF_TRUSTED_ORIGINS.append(WEBAUTHN_ORIGIN)
+if WEBAUTHN_RP_ID:
+    for scheme in ("http://", "https://"):
+        for port_suffix in (":8000", ""):
+            entry = f"{scheme}{WEBAUTHN_RP_ID}{port_suffix}"
+            if entry not in CSRF_TRUSTED_ORIGINS:
+                CSRF_TRUSTED_ORIGINS.append(entry)
+
+CSRF_COOKIE_NAME = "csrftoken_v3"
+SESSION_COOKIE_NAME = "sessionid_v3"
+CSRF_COOKIE_SECURE = False
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SAMESITE = 'Lax'
+
 # Cache backend for rate limiting & ephemeral challenges
 CACHES = {
     'default': {
@@ -211,7 +226,7 @@ CACHES = {
     }
 }
 
-LIVENESS_VERIFIER_TYPE = os.getenv("LIVENESS_VERIFIER_TYPE", "mediapipe")
+LIVENESS_VERIFIER_TYPE = os.getenv("LIVENESS_VERIFIER_TYPE", "new_face_system")
 
 # ---------- ATTENDANCE AGENT SETTINGS ----------
 # URL of the local Attendance Agent HTTP server

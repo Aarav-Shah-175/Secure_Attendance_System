@@ -56,24 +56,7 @@ def create_attendance_session(
     metadata_string = session_id + course_code + str(timestamp) + str(expiry) + str(security_mode)
     metadata_hash = sha256_hash(metadata_string)
 
-    private_key_pem = None
-    if professor.private_key_encrypted:
-        try:
-            decrypted = aes_decrypt(professor.private_key_encrypted)
-            if decrypted:
-                private_key_pem = decrypted.decode("utf-8")
-        except Exception as e:
-            logger.warning("Could not decrypt professor private key for %s: %s", professor.email, e)
-
-    if not private_key_pem:
-        # Self-healing: auto-generate ECDSA keypair if missing or corrupted
-        from core.crypto_utils import generate_ecdsa_keypair, aes_encrypt
-        priv, pub = generate_ecdsa_keypair()
-        professor.public_key = pub
-        professor.private_key_encrypted = aes_encrypt(priv.encode("utf-8"))
-        professor.save(update_fields=["public_key", "private_key_encrypted"])
-        private_key_pem = priv
-
+    private_key_pem = professor.get_private_key_pem()
     signature = sign_data(private_key_pem, metadata_hash.encode("utf-8"))
 
     # Resolve agent_id: use provided, or look up the professor's registered agent
@@ -113,9 +96,6 @@ def create_attendance_session(
         active=True,
         security_mode=security_mode,
     )
-
-    from django.core.cache import cache
-    cache.set(f"session_secret:{session_id}", session_secret_hex, timeout=3600)
 
     # Push session_secret to the Agent
     _push_secret_to_agent(session, session_secret_hex, expiry)

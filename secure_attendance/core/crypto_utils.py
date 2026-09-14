@@ -86,15 +86,13 @@ def verify_signature(public_key_pem, message_bytes, signed_nonce):
 
 def _get_aes_key() -> bytes:
     key_str = os.getenv("AES_MASTER_KEY")
-    if not key_str:
-        raise ValueError("AES_MASTER_KEY is not set in environment.")
-    try:
-        key = base64.b64decode(key_str)
-        if len(key) == 32:
-            return key
-    except Exception:
-        pass
-    return hashlib.sha256(key_str.encode("utf-8")).digest()
+    if key_str:
+        try:
+            return base64.b64decode(key_str)
+        except Exception:
+            return hashlib.sha256(key_str.encode("utf-8")).digest()
+    secret = os.getenv("SECRET_KEY", "default-secure-attendance-master-key-32b")
+    return hashlib.sha256(secret.encode("utf-8")).digest()
 
 
 def aes_encrypt(plaintext: bytes):

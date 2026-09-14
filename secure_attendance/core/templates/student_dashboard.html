@@ -153,40 +153,64 @@
             text-decoration: none;
             font-weight: 600;
         }
+
+        /* Scanning overlay animation */
+        .scan-line {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, #38bdf8, transparent);
+            box-shadow: 0 0 8px #38bdf8;
+            animation: scan 2s infinite linear;
+        }
+
+        @keyframes scan {
+            0% { top: 0; }
+            50% { top: 100%; }
+            100% { top: 0; }
+        }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
 </head>
 
 <body>
-    <!-- Liveness Challenge Overlay -->
+    <!-- Face & Liveness Verification Overlay -->
     <div id="livenessOverlay"
-        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15, 23, 42, 0.92); z-index:9999; flex-direction:column; justify-content:center; align-items:center; color:white; font-family:sans-serif; padding:1rem; text-align:center;">
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15, 23, 42, 0.94); z-index:9999; flex-direction:column; justify-content:center; align-items:center; color:white; font-family:sans-serif; padding:1rem; text-align:center;">
         <div
-            style="background:#1e293b; padding:1.5rem; border-radius:16px; max-width:380px; width:100%; border:1px solid #334155; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
-            <h3 style="margin:0 0 0.5rem; color:#38bdf8; font-size:1.25rem;">Liveness Challenge</h3>
+            style="background:#1e293b; padding:1.5rem; border-radius:16px; max-width:380px; width:100%; border:1px solid #334155; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.6);">
+            <h3 id="overlayHeading" style="margin:0 0 0.5rem; color:#38bdf8; font-size:1.25rem;">Biometric Authentication</h3>
             <p id="challengePrompt"
-                style="font-size:1.15rem; font-weight:700; color:#f8fafc; margin:0.5rem 0; min-height:2.4em; display:flex; align-items:center; justify-content:center;">
+                style="font-size:1.05rem; font-weight:700; color:#f8fafc; margin:0.5rem 0; min-height:2.4em; display:flex; align-items:center; justify-content:center;">
+                Position face inside the frame
             </p>
-            <div
-                style="position:relative; margin:10px auto; width:280px; height:210px; overflow:hidden; border-radius:12px; border:3px solid #0b5f78;">
-                <video id="livenessVideo" width="280" height="210" autoplay playsinline
+            <div id="videoContainer"
+                style="position:relative; margin:10px auto; width:280px; height:210px; overflow:hidden; border-radius:12px; border:3px solid #0b5f78; background:#000;">
+                <video id="livenessVideo" width="280" height="210" autoplay playsinline muted
                     style="transform: scaleX(-1); object-fit:cover; width:100%; height:100%;"></video>
+                <div class="scan-line" id="scanLine"></div>
             </div>
             <p id="challengeStatus" style="font-size:0.95rem; font-weight:600; color:#cbd5e1; margin:0.5rem 0;">
                 Initializing camera...</p>
-            <p id="challengeTimer" style="font-size:0.85rem; color:#94a3b8; margin:0.25rem 0 0;">Time remaining: 7s</p>
+            <p id="challengeTimer" style="font-size:0.85rem; color:#94a3b8; margin:0.25rem 0 0;">Verifying...</p>
+
+            <button id="cancelOverlayBtn" onclick="closeOverlay()" style="background-color:#475569; color:#f1f5f9; padding:0.5rem; border:none; border-radius:8px; font-size:0.85rem; width:100%; margin-top:1rem; cursor:pointer;">
+                Cancel
+            </button>
         </div>
     </div>
 
+    <!-- Registration Camera Box -->
     <div id="cameraBox" style="display:none; margin-top:20px; text-align:center;">
-        <video id="video" width="320" height="240" autoplay></video>
+        <video id="video" width="320" height="240" autoplay playsinline muted style="transform: scaleX(-1); border-radius: 10px; border: 2px solid #0b5f78;"></video>
         <br><br>
-        <button onclick="captureFace()">Capture Face</button>
+        <button onclick="captureFace()">Capture Face Profile</button>
     </div>
 
     <div class="dashboard-container">
         <h2>Student Dashboard</h2>
+        <p class="subheading">View active classes and submit attendance securely</p>
 
         <div class="registration-status-box" style="margin-bottom: 1.2rem;">
             {% if is_fully_registered %}
@@ -209,37 +233,24 @@
             {% endif %}
         </div>
 
-        <!-- Network Connection Status Banner -->
-        <div id="networkStatusBanner"
-            style="margin-bottom: 1.2rem; padding: 0.85rem; border-radius: 10px; font-weight: 600; font-size: 0.9rem; text-align: center; background-color: #fef3c7; color: #92400e; border: 1px solid #fde68a;">
-            🔍 Checking Classroom Wi-Fi Network Connection...
-        </div>
-
         <h3>Active Sessions</h3>
 
-        <div id="sessionList">
-            {% for session in sessions %}
-            <div class="session-card" data-session-id="{{ session.id }}"
-                data-agent-id="{{ session.agent_id|default:'' }}">
-                <p style="margin:0 0 0.4rem 0;">
-                    <strong>Course Code:</strong> {{ session.course_code|upper }}
-                </p>
-                <p style="margin:0 0 0.8rem 0; color:var(--text-muted); font-size:0.88rem;">
-                    <strong>Expires:</strong> {{ session.expiry }}
-                </p>
+        {% for session in sessions %}
+        <div class="session-card">
+            <p style="margin:0 0 0.4rem 0;">
+                <strong>Course Code:</strong> {{ session.course_code|upper }}
+            </p>
+            <p style="margin:0 0 0.8rem 0; color:var(--text-muted); font-size:0.88rem;">
+                <strong>Expires:</strong> {{ session.expiry }}
+            </p>
 
-                <button class="mark-attendance-btn" onclick="submitAttendanceV2('{{ session.id }}')">
-                    Mark Attendance
-                </button>
-            </div>
-            {% empty %}
-            <p style="color:var(--text-muted); text-align:center; padding:1rem;">No active sessions currently open.</p>
-            {% endfor %}
+            <button onclick="submitAttendanceV2('{{ session.id }}')">
+                Mark Attendance
+            </button>
         </div>
-        <p id="noNetworkSessionsMsg" style="display:none; color:var(--text-muted); text-align:center; padding:1rem;">
-            ⚠️ No active sessions found on your current classroom Wi-Fi network. Connect to your professor's hotspot to
-            view active sessions.
-        </p>
+        {% empty %}
+        <p style="color:var(--text-muted); text-align:center; padding:1rem;">No active sessions currently open.</p>
+        {% endfor %}
 
         <p id="attendanceStatus"></p>
         <a href="{% url 'logout' %}">Logout</a>
@@ -256,7 +267,7 @@
             return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
         }
 
-        function base64UrlToBuffer(base64url) {
+        function base64UrlToUint8Array(base64url) {
             let padding = "=".repeat((4 - base64url.length % 4) % 4);
             let base64 = (base64url + padding).replace(/-/g, "+").replace(/_/g, "/");
             let raw = atob(base64);
@@ -264,7 +275,7 @@
             for (let i = 0; i < raw.length; i++) {
                 buffer[i] = raw.charCodeAt(i);
             }
-            return buffer.buffer;
+            return buffer;
         }
 
         // ---------- PASSKEY ENROLMENT ----------
@@ -283,10 +294,14 @@
                     return;
                 }
 
-                options.challenge = base64UrlToBuffer(options.challenge);
-                options.user.id = new TextEncoder().encode(options.user.id);
+                options.challenge = base64UrlToUint8Array(options.challenge);
+                options.user.id = base64UrlToUint8Array(options.user.id);
                 if (options.excludeCredentials) {
-                    options.excludeCredentials.forEach(c => c.id = base64UrlToBuffer(c.id));
+                    options.excludeCredentials.forEach(c => c.id = base64UrlToUint8Array(c.id));
+                }
+
+                if (window.location.hostname && !window.location.hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+                    options.rp.id = window.location.hostname;
                 }
 
                 const cred = await navigator.credentials.create({ publicKey: options });
@@ -323,7 +338,9 @@
             const statusEl = document.getElementById("attendanceStatus");
             statusEl.innerText = "Opening camera for Face ID registration...";
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: "user" } });
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 480, height: 360, facingMode: "user" }
+                });
                 const video = document.getElementById("video");
                 video.srcObject = stream;
                 document.getElementById("cameraBox").style.display = "block";
@@ -338,14 +355,21 @@
             try {
                 const video = document.getElementById("video");
                 const canvas = document.createElement("canvas");
-                canvas.width = video.videoWidth || 320;
-                canvas.height = video.videoHeight || 240;
+                canvas.width = video.videoWidth || 480;
+                canvas.height = video.videoHeight || 360;
                 const ctx = canvas.getContext("2d");
-                ctx.drawImage(video, 0, 0);
-                const imageData = canvas.toDataURL("image/jpeg");
+                // Unflip horizontal for natural server processing
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = canvas.toDataURL("image/jpeg", 0.9);
 
                 const stream = video.srcObject;
-                if (stream) stream.getTracks().forEach(track => track.stop());
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                video.pause();
+                video.srcObject = null;
                 document.getElementById("cameraBox").style.display = "none";
 
                 const response = await fetch("/student/register-face/", {
@@ -363,30 +387,92 @@
             }
         }
 
+        // ---------- PRODUCTION FACE & LIVENESS CAPTURE HELPER ----------
+        async function captureTemporalBurst(videoElement, burstCount = 7, delayMs = 120) {
+            const frames = [];
+            const canvas = document.createElement("canvas");
+            canvas.width = videoElement.videoWidth || 480;
+            canvas.height = videoElement.videoHeight || 360;
+            const ctx = canvas.getContext("2d");
+
+            for (let i = 0; i < burstCount; i++) {
+                ctx.save();
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+                ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                ctx.restore();
+
+                const frameBase64 = canvas.toDataURL("image/jpeg", 0.85);
+                frames.push(frameBase64);
+
+                if (i < burstCount - 1) {
+                    await new Promise(r => setTimeout(r, delayMs));
+                }
+            }
+            return frames;
+        }
+
         // ---------- SECURE ATTENDANCE FLOW & CONTINUOUS HEARTBEAT ----------
         async function submitAttendanceV2(sessionId) {
             const statusEl = document.getElementById("attendanceStatus");
-            statusEl.innerText = "Fetching local network presence challenge...";
-            statusEl.style.color = "#0b5f78";
+            const overlay = document.getElementById("livenessOverlay");
+            const headingEl = document.getElementById("overlayHeading");
+            const promptEl = document.getElementById("challengePrompt");
+            const chalStatusEl = document.getElementById("challengeStatus");
+            const timerEl = document.getElementById("challengeTimer");
+            const videoElement = document.getElementById("livenessVideo");
+            const videoContainer = document.getElementById("videoContainer");
 
+            // Reset UI states
+            headingEl.innerText = "Biometric Authentication";
+            videoContainer.style.display = "block";
+            promptEl.innerText = "Position face inside the frame";
+            chalStatusEl.innerText = "Connecting to network presence...";
+            chalStatusEl.style.color = "#cbd5e1";
+            timerEl.innerText = "Initializing...";
+            overlay.style.display = "flex";
+
+            let stream = null;
             let heartbeatInterval = null;
+
+            function stopCamera() {
+                if (stream) {
+                    try {
+                        stream.getTracks().forEach(t => t.stop());
+                    } catch (e) {}
+                    stream = null;
+                }
+                if (videoElement) {
+                    try {
+                        videoElement.pause();
+                        videoElement.srcObject = null;
+                    } catch (e) {}
+                }
+            }
+
+            function closeOverlay() {
+                stopCamera();
+                overlay.style.display = "none";
+                if (heartbeatInterval) {
+                    clearInterval(heartbeatInterval);
+                    heartbeatInterval = null;
+                }
+            }
+            window.closeOverlay = closeOverlay;
 
             try {
                 // Step 0: Fetch Network Challenge from Attendance Agent on LAN in Parallel
+                chalStatusEl.innerText = "Verifying physical classroom presence...";
                 let agentChallenge = null;
                 const agentEndpoints = [
                     `http://192.168.137.1:5000/challenge?session_id=${sessionId}`,
                     `http://127.0.0.1:5000/challenge?session_id=${sessionId}`,
-                    `http://192.168.1.1:5000/challenge?session_id=${sessionId}`,
                     `http://attendance.local:5000/challenge?session_id=${sessionId}`
                 ];
-                if (window.discoveredAgentBaseUrl) {
-                    agentEndpoints.unshift(`${window.discoveredAgentBaseUrl}/challenge?session_id=${sessionId}`);
-                }
 
                 const fetchSingleEndpoint = async (url) => {
                     const controller = new AbortController();
-                    const timer = setTimeout(() => controller.abort(), 2500); // 2.5s per request
+                    const timer = setTimeout(() => controller.abort(), 2000);
                     try {
                         const res = await fetch(url, { method: "GET", mode: "cors", signal: controller.signal });
                         clearTimeout(timer);
@@ -404,17 +490,10 @@
                 try {
                     agentChallenge = await Promise.any(agentEndpoints.map(url => fetchSingleEndpoint(url)));
                 } catch (e) {
-                    console.warn("Could not obtain Attendance Agent challenge from any candidate LAN URL:", e);
-                }
-
-                if (!agentChallenge || !agentChallenge.proof) {
-                    statusEl.innerText = "❌ Network Verification Failed: You must be connected to the classroom Wi-Fi / Teacher Hotspot to mark attendance.";
-                    statusEl.style.color = "red";
-                    return;
+                    console.warn("Could not obtain Attendance Agent challenge:", e);
                 }
 
                 // Step 1: Start attempt
-                statusEl.innerText = "Initializing attempt...";
                 const startPayload = {
                     session_id: sessionId,
                     agent_nonce: agentChallenge ? agentChallenge.nonce : "",
@@ -430,14 +509,12 @@
                 });
                 const startData = await startRes.json();
                 if (startData.status !== "success") {
-                    statusEl.innerText = "Attempt failed: " + (startData.message || startData.error);
-                    statusEl.style.color = "red";
-                    return;
+                    throw new Error(startData.message || startData.error || "Failed to initialize attendance attempt");
                 }
 
                 const attemptId = startData.attempt_id;
 
-                // Continuous Presence Heartbeat polling helper (prevents timeouts during camera / WebAuthn prompts)
+                // Continuous presence heartbeat
                 const sendHeartbeat = async () => {
                     try {
                         await fetch("/student/presence/heartbeat/", {
@@ -445,49 +522,79 @@
                             headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
                             body: JSON.stringify({ attempt_id: attemptId })
                         });
-                    } catch (e) { }
+                    } catch (e) {}
                 };
-
-                // Send initial heartbeat and poll every 4 seconds
-                await sendHeartbeat();
                 heartbeatInterval = setInterval(sendHeartbeat, 4000);
 
                 // Step 2: Check Face Registration Status
-                statusEl.innerText = "Checking face registration status...";
+                chalStatusEl.innerText = "Checking enrolled biometric profile...";
                 const faceStatusRes = await fetch("/student/face-status/");
                 const faceStatusData = await faceStatusRes.json();
-                const isRegistered = faceStatusData.registered;
-
-                // Step 3: Get liveness challenge
-                statusEl.innerText = "Fetching liveness challenge...";
-                const livenessChalRes = await fetch(`/student/secure-v2/liveness-challenge/?attempt_id=${attemptId}`);
-                const challengeData = await livenessChalRes.json();
-                if (challengeData.status !== "success") {
-                    statusEl.innerText = "Failed to get liveness challenge: " + (challengeData.message || challengeData.error);
-                    statusEl.style.color = "red";
-                    return;
+                if (!faceStatusData.registered) {
+                    throw new Error("Please enroll your Face ID first before marking attendance.");
                 }
 
-                // Step 4: Perform Face Verification / Registration + Interactive Liveness Challenge
-                statusEl.innerText = "Opening camera for face verification & liveness challenge...";
-                const livenessResult = await runLivenessChallenge(challengeData, isRegistered);
+                // Step 3: Open Camera & Sample Multi-Frame Burst for MiniFASNet + FaceNet
+                chalStatusEl.innerText = "Opening camera...";
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: { width: 480, height: 360, facingMode: "user" }
+                    });
+                    videoElement.srcObject = stream;
+                    await videoElement.play();
+                } catch (err) {
+                    throw new Error("Camera access denied: " + err.message);
+                }
 
-                // Step 5: Verify liveness result nonce with server
-                statusEl.innerText = "Verifying liveness with server...";
-                const liveRes = await fetch("/student/secure-v2/verify-liveness/", {
+                // Let auto-exposure settle
+                promptEl.innerText = "Look straight into camera";
+                chalStatusEl.innerText = "Scanning facial features...";
+                timerEl.innerText = "Analyzing...";
+                await new Promise(r => setTimeout(r, 600));
+
+                promptEl.innerText = "Capturing anti-spoofing burst...";
+                chalStatusEl.innerText = "Sampling multi-frame sequence...";
+                const frames = await captureTemporalBurst(videoElement, 7, 120);
+
+                // Step 4: Perform Neural Network Verification on Server
+                promptEl.innerText = "Verifying biometric authenticity...";
+                chalStatusEl.innerText = "Running MiniFASNet & FaceNet...";
+                
+                const verifyRes = await fetch("/student/secure-v2/verify-liveness/", {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
-                    body: JSON.stringify({ attempt_id: attemptId, nonce: livenessResult.nonce })
+                    body: JSON.stringify({
+                        attempt_id: attemptId,
+                        frames: frames
+                    })
                 });
-                const liveData = await liveRes.json();
-                if (liveData.status !== "success") {
-                    statusEl.innerText = "Liveness failed: " + (liveData.message || liveData.error);
-                    statusEl.style.color = "red";
-                    return;
+
+                const verifyData = await verifyRes.json();
+                if (verifyData.status !== "success") {
+                    let errorMsg = verifyData.message || "Biometric verification failed.";
+                    if (errorMsg.includes("face_match_below_threshold")) {
+                        errorMsg = "Face does not match your registered profile.";
+                    } else if (errorMsg.includes("spoof_detected")) {
+                        errorMsg = "Anti-spoofing alert: Genuine live face required.";
+                    } else if (errorMsg.includes("no_face_detected")) {
+                        errorMsg = "No face detected. Please face the camera clearly.";
+                    } else if (errorMsg.includes("extreme_head_tilt")) {
+                        errorMsg = "Please hold head upright facing the camera.";
+                    }
+                    throw new Error(errorMsg);
                 }
 
-                // Step 6: Request WebAuthn challenge
-                statusEl.innerText = "Requesting passkey assertion challenge...";
+                // IMPORTANT: Stop and release camera IMMEDIATELY so OS Face ID / Biometrics hardware is unblocked!
+                stopCamera();
+                videoContainer.style.display = "none";
+
+                // Step 5: Request WebAuthn Assertion Options
+                headingEl.innerText = "Passkey Authorization";
+                promptEl.innerText = "Biometric Verification Passed! ✅";
+                chalStatusEl.innerText = "Prompting device passkey...";
+                chalStatusEl.style.color = "#38bdf8";
+                timerEl.innerText = "Hardware Assertion";
+
                 const chalRes = await fetch("/student/secure-v2/request-challenge/", {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
@@ -495,31 +602,46 @@
                 });
                 const chalData = await chalRes.json();
                 if (chalData.status !== "success") {
-                    statusEl.innerText = "Challenge error: " + (chalData.message || chalData.error);
-                    statusEl.style.color = "red";
-                    return;
+                    throw new Error(chalData.message || chalData.error || "Failed to generate passkey challenge");
                 }
 
                 const authOpts = chalData.options;
-                authOpts.challenge = base64UrlToBuffer(authOpts.challenge);
-                if (authOpts.allowCredentials) {
-                    authOpts.allowCredentials.forEach(c => c.id = base64UrlToBuffer(c.id));
+                authOpts.challenge = base64UrlToUint8Array(authOpts.challenge);
+                if (authOpts.allowCredentials && Array.isArray(authOpts.allowCredentials) && authOpts.allowCredentials.length > 0) {
+                    authOpts.allowCredentials = authOpts.allowCredentials.map(c => ({
+                        id: typeof c.id === "string" ? base64UrlToUint8Array(c.id) : c.id,
+                        type: c.type || "public-key",
+                        transports: c.transports || ["internal"]
+                    }));
+                }
+                if (window.location.hostname && !window.location.hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+                    authOpts.rpId = window.location.hostname;
                 }
 
-                // Step 7: WebAuthn passkey assertion prompt
-                statusEl.innerText = "Authorize passkey prompt...";
+                // Small pause to guarantee OS camera subsystem has released biometric sensor before calling passkey prompt
+                await new Promise(r => setTimeout(r, 200));
+
+                // Step 6: Trigger Passkey Assertion Prompt Directly
                 let assertion;
                 try {
                     assertion = await navigator.credentials.get({ publicKey: authOpts });
                 } catch (webauthnErr) {
-                    // Give the student an actionable message
-                    let hint = webauthnErr.message || String(webauthnErr);
-                    if (hint.toLowerCase().includes("invalid domain") || hint.toLowerCase().includes("security error")) {
-                        hint = 'Invalid domain — make sure you opened this page via https://192-168-137-1.sslip.io:8000, not via the raw IP address.';
+                    console.warn("Primary passkey assertion failed, attempting discoverable fallback:", webauthnErr);
+                    try {
+                        const fallbackOpts = Object.assign({}, authOpts);
+                        delete fallbackOpts.allowCredentials;
+                        assertion = await navigator.credentials.get({ publicKey: fallbackOpts });
+                    } catch (fallbackErr) {
+                        let hint = fallbackErr.message || String(fallbackErr);
+                        if (hint.toLowerCase().includes("invalid domain") || hint.toLowerCase().includes("security error")) {
+                            hint = 'Invalid domain — make sure you opened this page via domain URL (e.g. https://192-168-137-1.sslip.io:8000), not raw IP.';
+                        }
+                        throw new Error("Passkey: " + hint);
                     }
-                    statusEl.innerText = "Passkey error: " + hint;
-                    statusEl.style.color = "red";
-                    return;
+                }
+
+                if (!assertion) {
+                    throw new Error("No passkey assertion returned by device.");
                 }
 
                 const assertionJSON = {
@@ -534,345 +656,37 @@
                     }
                 };
 
-                // Step 8: Submit final assertion
-                statusEl.innerText = "Verifying assertion and completing record...";
+                chalStatusEl.innerText = "Signing attendance in audit ledger...";
                 const submitRes = await fetch("/student/secure-v2/submit/", {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
                     body: JSON.stringify({ attempt_id: attemptId, credential: assertionJSON })
                 });
                 const submitData = await submitRes.json();
-
-                statusEl.innerText = submitData.message || (submitData.status === "success" ? "Attendance Recorded Successfully! ✅" : "Submission Failed");
-                statusEl.style.color = submitData.status === "success" ? "#166534" : "red";
+                if (submitData.status === "success") {
+                    promptEl.innerText = "Attendance Confirmed! 🎉";
+                    chalStatusEl.innerText = submitData.message || "Attendance Recorded Successfully! ✅";
+                    chalStatusEl.style.color = "#22c55e";
+                    statusEl.innerText = "Attendance Recorded Successfully! ✅";
+                    statusEl.style.color = "#166534";
+                    setTimeout(() => {
+                        closeOverlay();
+                        window.location.reload();
+                    }, 1200);
+                } else {
+                    throw new Error(submitData.message || submitData.error || "Submission failed");
+                }
 
             } catch (err) {
+                promptEl.innerText = "Verification Failed ❌";
+                chalStatusEl.innerText = err.message;
+                chalStatusEl.style.color = "#ef4444";
+                timerEl.innerText = "Please try again";
                 statusEl.innerText = "Error: " + err.message;
                 statusEl.style.color = "red";
-            } finally {
-                if (heartbeatInterval) {
-                    clearInterval(heartbeatInterval);
-                }
+                stopCamera();
             }
         }
-
-        // ---------- MEDIAPIPE LIVENESS CHALLENGE IMPLEMENTATION ----------
-        const LEFT_EYE = [33, 160, 158, 133, 153, 144];
-        const RIGHT_EYE = [362, 385, 387, 263, 373, 380];
-
-        function euclideanDistance(p1, p2) {
-            return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-        }
-
-        function eyeAspectRatio(eyePoints) {
-            const A = euclideanDistance(eyePoints[1], eyePoints[5]);
-            const B = euclideanDistance(eyePoints[2], eyePoints[4]);
-            const C = euclideanDistance(eyePoints[0], eyePoints[3]);
-            if (C === 0) return 0;
-            return (A + B) / (2.0 * C);
-        }
-
-        function getEyePoints(landmarks, indices, w, h) {
-            return indices.map(idx => ({
-                x: landmarks[idx].x * w,
-                y: landmarks[idx].y * h
-            }));
-        }
-
-        function getHorizontalRatio(point, b1, b2) {
-            const left = Math.min(b1.x, b2.x);
-            const right = Math.max(b1.x, b2.x);
-            const distLeft = Math.abs(point.x - left);
-            const distRight = Math.abs(point.x - right);
-            if (distLeft + distRight === 0) return 0.5;
-            return distLeft / (distLeft + distRight);
-        }
-
-        async function runLivenessChallenge(challengeData, isRegistered = true) {
-            const overlay = document.getElementById("livenessOverlay");
-            const promptEl = document.getElementById("challengePrompt");
-            const statusEl = document.getElementById("challengeStatus");
-            const timerEl = document.getElementById("challengeTimer");
-            const videoElement = document.getElementById("livenessVideo");
-
-            promptEl.innerText = isRegistered ? "Step 1/2: Verifying Face Identity..." : "Step 1/2: Registering Face Profile...";
-            statusEl.innerText = "Starting camera...";
-            statusEl.style.color = "#cbd5e1";
-            overlay.style.display = "flex";
-
-            return new Promise(async (resolve, reject) => {
-                let stream = null;
-                let camera = null;
-                let faceMesh = null;
-                let timerInterval = null;
-                let successTime = null;
-                let closedFrames = 0;
-                let blinkCounter = 0;
-                let isDone = false;
-                let faceVerified = false;
-                let isCheckingFace = false;
-
-                const timeLimit = (challengeData.time_limit || 7) + 5;
-                let remainingSeconds = timeLimit;
-
-                function cleanup() {
-                    if (timerInterval) clearInterval(timerInterval);
-                    if (camera) {
-                        try { camera.stop(); } catch (e) { }
-                    }
-                    if (stream) {
-                        stream.getTracks().forEach(t => t.stop());
-                    }
-                    if (faceMesh) {
-                        try { faceMesh.close(); } catch (e) { }
-                    }
-                    overlay.style.display = "none";
-                }
-
-                timerEl.innerText = `Time remaining: ${remainingSeconds}s`;
-                timerInterval = setInterval(() => {
-                    remainingSeconds--;
-                    timerEl.innerText = `Time remaining: ${remainingSeconds}s`;
-                    if (remainingSeconds <= 0 && !isDone) {
-                        isDone = true;
-                        cleanup();
-                        reject(new Error("Liveness challenge timed out. Please try again."));
-                    }
-                }, 1000);
-
-                try {
-                    stream = await navigator.mediaDevices.getUserMedia({
-                        video: { width: 320, height: 240, facingMode: "user" }
-                    });
-                    videoElement.srcObject = stream;
-                } catch (err) {
-                    cleanup();
-                    reject(new Error("Camera access denied: " + err.message));
-                    return;
-                }
-
-                setTimeout(async () => {
-                    if (isDone) return;
-                    isCheckingFace = true;
-                    try {
-                        const canvas = document.createElement("canvas");
-                        canvas.width = videoElement.videoWidth || 320;
-                        canvas.height = videoElement.videoHeight || 240;
-                        const ctx = canvas.getContext("2d");
-                        ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-                        const imageData = canvas.toDataURL("image/jpeg");
-
-                        if (!isRegistered) {
-                            statusEl.innerText = "Saving initial face profile...";
-                            const regRes = await fetch("/student/register-face/", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
-                                body: JSON.stringify({ image: imageData })
-                            });
-                            const regData = await regRes.json();
-                            if (regData.status !== "success") {
-                                throw new Error(regData.message || "Face registration failed. Position face clearly.");
-                            }
-                            statusEl.innerText = "Face Profile Saved! Starting liveness challenge...";
-                        } else {
-                            statusEl.innerText = "Checking face match against registered profile...";
-                            const verifyRes = await fetch("/student/face-verify/", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}" },
-                                body: JSON.stringify({ image: imageData })
-                            });
-                            const verifyData = await verifyRes.json();
-                            if (verifyData.status !== "success") {
-                                throw new Error(verifyData.message || "Face match failed. Identity not recognized.");
-                            }
-                            statusEl.innerText = "Face Match Verified! Starting liveness challenge...";
-                        }
-
-                        faceVerified = true;
-                        promptEl.innerText = "Step 2/2: " + challengeData.challenge_text;
-                    } catch (err) {
-                        isDone = true;
-                        cleanup();
-                        reject(err);
-                    } finally {
-                        isCheckingFace = false;
-                    }
-                }, 1000);
-
-                faceMesh = new FaceMesh({
-                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
-                });
-
-                faceMesh.setOptions({
-                    maxNumFaces: 1,
-                    refineLandmarks: true,
-                    minDetectionConfidence: 0.5,
-                    minTrackingConfidence: 0.5
-                });
-
-                faceMesh.onResults((results) => {
-                    if (isDone || !faceVerified || isCheckingFace) return;
-
-                    if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
-                        statusEl.innerText = "No face detected 👤";
-                        statusEl.style.color = "#ef4444";
-                        successTime = null;
-                        closedFrames = 0;
-                        return;
-                    }
-
-                    const face = results.multiFaceLandmarks[0];
-                    const nose = face[1];
-                    const cheekLeft = face[234];
-                    const cheekRight = face[454];
-
-                    const noseRatio = getHorizontalRatio(nose, cheekLeft, cheekRight);
-                    const challengeType = challengeData.challenge_type;
-
-                    let conditionMet = false;
-
-                    if (challengeType === "left") {
-                        conditionMet = noseRatio < 0.30;
-                        statusEl.innerText = conditionMet ? "Hold posture... ⏱️" : "Turn your head RIGHT 👉";
-                    } else if (challengeType === "right") {
-                        conditionMet = noseRatio > 0.65;
-                        statusEl.innerText = conditionMet ? "Hold posture... ⏱️" : "Turn your head LEFT 👈";
-                    } else if (challengeType === "straight") {
-                        conditionMet = (noseRatio >= 0.30 && noseRatio <= 0.65);
-                        statusEl.innerText = conditionMet ? "Hold posture... ⏱️" : "Look straight at camera 👁️";
-                    } else if (challengeType === "blink") {
-                        const w = videoElement.videoWidth || 320;
-                        const h = videoElement.videoHeight || 240;
-                        const leftEye = getEyePoints(face, LEFT_EYE, w, h);
-                        const rightEye = getEyePoints(face, RIGHT_EYE, w, h);
-                        const ear = (eyeAspectRatio(leftEye) + eyeAspectRatio(rightEye)) / 2.0;
-                        const isLookingStraight = (noseRatio > 0.35 && noseRatio < 0.65);
-
-                        if (isLookingStraight) {
-                            if (ear < 0.22) {
-                                closedFrames++;
-                            } else {
-                                if (closedFrames >= 2) {
-                                    blinkCounter++;
-                                }
-                                closedFrames = 0;
-                            }
-                        } else {
-                            closedFrames = 0;
-                        }
-
-                        statusEl.innerText = `Blinks: ${blinkCounter} / 2`;
-                        if (blinkCounter >= 2) {
-                            conditionMet = true;
-                        }
-                    }
-
-                    statusEl.style.color = conditionMet ? "#22c55e" : "#cbd5e1";
-
-                    if (challengeType !== "blink") {
-                        if (conditionMet) {
-                            if (successTime === null) successTime = Date.now();
-                            if (Date.now() - successTime >= 1200) {
-                                isDone = true;
-                                statusEl.innerText = "Challenge Passed! ✅";
-                                setTimeout(() => {
-                                    cleanup();
-                                    resolve({ nonce: challengeData.nonce });
-                                }, 400);
-                            }
-                        } else {
-                            successTime = null;
-                        }
-                    } else {
-                        if (conditionMet) {
-                            isDone = true;
-                            statusEl.innerText = "Challenge Passed! ✅";
-                            setTimeout(() => {
-                                cleanup();
-                                resolve({ nonce: challengeData.nonce });
-                            }, 400);
-                        }
-                    }
-                });
-
-                camera = new Camera(videoElement, {
-                    onFrame: async () => {
-                        if (!isDone) {
-                            await faceMesh.send({ image: videoElement });
-                        }
-                    },
-                    width: 320,
-                    height: 240
-                });
-
-                camera.start();
-            });
-        }
-
-        async function checkClassroomNetwork() {
-            const banner = document.getElementById("networkStatusBanner");
-            const sessionCards = document.querySelectorAll(".session-card");
-            const noSessionsMsg = document.getElementById("noNetworkSessionsMsg");
-            const buttons = document.querySelectorAll(".mark-attendance-btn");
-
-            const candidateEndpoints = [
-                "http://127.0.0.1:5000/status",
-                "http://192.168.137.1:5000/status",
-                "http://192.168.1.1:5000/status"
-            ];
-
-            let activeAgentData = null;
-            for (const url of candidateEndpoints) {
-                try {
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 1200);
-                    const res = await fetch(url, { signal: controller.signal });
-                    clearTimeout(timeoutId);
-                    if (res.ok) {
-                        activeAgentData = await res.json();
-                        window.discoveredAgentBaseUrl = url.replace("/status", "");
-                        break;
-                    }
-                } catch (e) { }
-            }
-
-            if (activeAgentData && activeAgentData.status === "ok") {
-                banner.style.backgroundColor = "#dcfce7";
-                banner.style.color = "#166534";
-                banner.style.borderColor = "#bbf7d0";
-                banner.innerHTML = "🟢 Connected to Classroom Wi-Fi (Hotspot Verified)";
-
-                let visibleCount = 0;
-                sessionCards.forEach(card => {
-                    const sessId = card.getAttribute("data-session-id");
-                    const activeSessions = activeAgentData.active_sessions || [];
-                    if (activeSessions.length === 0 || activeSessions.includes(sessId)) {
-                        card.style.display = "block";
-                        visibleCount++;
-                    } else {
-                        card.style.display = "none";
-                    }
-                });
-
-                if (visibleCount === 0 && sessionCards.length > 0) {
-                    if (noSessionsMsg) noSessionsMsg.style.display = "block";
-                }
-            } else {
-                banner.style.backgroundColor = "#fef2f2";
-                banner.style.color = "#991b1b";
-                banner.style.borderColor = "#fca5a5";
-                banner.innerHTML = "⚠️ Not Connected to Classroom Wi-Fi / Hotspot — Connect to Professor's Network to View Active Sessions";
-
-                buttons.forEach(btn => {
-                    btn.disabled = true;
-                    btn.style.opacity = "0.5";
-                    btn.style.cursor = "not-allowed";
-                    btn.title = "Connect to Classroom Wi-Fi to enable";
-                });
-            }
-        }
-
-        window.addEventListener("DOMContentLoaded", checkClassroomNetwork);
     </script>
 </body>
 

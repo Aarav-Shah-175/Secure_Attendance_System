@@ -60,7 +60,7 @@ def create_audit_entry_v2(
     # Payload to sign: report hash + previous hash link
     to_sign = f"{canonical_hash}:{previous_hash or 'GENESIS'}"
     
-    private_key_pem = aes_decrypt(professor.private_key_encrypted).decode("utf-8")
+    private_key_pem = professor.get_private_key_pem()
     entry_signature = sign_data(private_key_pem, to_sign.encode("utf-8"))
 
     verification_refs = {
@@ -92,7 +92,7 @@ def close_session_audit_root(session: AttendanceSession) -> AttendanceSessionAud
     combined = "".join(hashes) if hashes else "EMPTY_SESSION"
     root_hash = sha256_hash(combined)
 
-    private_key_pem = aes_decrypt(session.professor.private_key_encrypted).decode("utf-8")
+    private_key_pem = session.professor.get_private_key_pem()
     signature = sign_data(private_key_pem, root_hash.encode("utf-8"))
 
     audit_root, _ = AttendanceSessionAuditRoot.objects.update_or_create(
