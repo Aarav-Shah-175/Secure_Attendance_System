@@ -16,7 +16,8 @@ import requests
 import logging
 from django.utils import timezone
 from django.conf import settings
-from core.crypto_utils import sha256_hash, sign_data, aes_decrypt
+from django.core.cache import cache
+from core.crypto_utils import sha256_hash, sign_data, aes_encrypt, aes_decrypt
 from core.models import AttendanceSession, AttendanceAgent, SecurityMode
 
 logger = logging.getLogger(__name__)
@@ -46,10 +47,12 @@ def create_attendance_session(
     timestamp = timezone.now()
     expiry = timestamp + datetime.timedelta(minutes=30)
 
-    # Generate session_secret (256-bit, RAM only — store only the hash in DB)
+    # Generate session_secret (256-bit, encrypted in DB + stored in cache for Agent pull-sync)
     session_secret = secrets.token_bytes(32)
     session_secret_hex = session_secret.hex()
     session_secret_hash = sha256_hash(session_secret_hex)
+    encrypted_secret = aes_encrypt(session_secret_hex.encode("utf-8"))
+    cache.set(f"session_secret:{session_id}", session_secret_hex, timeout=1800)
 
     # Session metadata signature (integrity)
     network_nonce = os.urandom(32).hex()
@@ -92,6 +95,7 @@ def create_attendance_session(
         gateway_ip=None,          # No longer used
         subnet_range="agent",     # Placeholder — agent handles network check
         session_secret_hash=session_secret_hash,
+        encrypted_session_secret=encrypted_secret,
         agent_id=agent_id,
         active=True,
         security_mode=security_mode,

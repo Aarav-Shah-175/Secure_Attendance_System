@@ -132,6 +132,7 @@ class AttendanceSession(models.Model):
     subnet_range = models.CharField(max_length=50, blank=True, default='agent')
     # Attendance Agent fields
     session_secret_hash = models.CharField(max_length=64, blank=True, default='')  # SHA256(session_secret)
+    encrypted_session_secret = models.TextField(blank=True, default='')  # AES-256-GCM encrypted session_secret for Agent sync
     agent_id = models.CharField(max_length=64, blank=True, default='')
     active = models.BooleanField(default=True)
     security_mode = models.CharField(

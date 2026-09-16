@@ -821,6 +821,8 @@ def agent_sync_view(request):
     Body: { "agent_id": "<agent_id>" }
     """
     from django.db.models import Q
+    from django.core.cache import cache
+    from core.crypto_utils import aes_decrypt
 
     if request.method != "POST":
         return JsonResponse({"error": "Method not allowed"}, status=405)
@@ -843,11 +845,23 @@ def agent_sync_view(request):
 
     sessions_data = []
     for s in active_sessions:
-        sessions_data.append({
-            "session_id": str(s.id),
-            "expires_at": s.expiry.timestamp(),
-        })
+        # Retrieve secret from cache or decrypt from model
+        sec_hex = cache.get(f"session_secret:{s.id}")
+        if not sec_hex and getattr(s, 'encrypted_session_secret', None):
+            try:
+                sec_hex = aes_decrypt(s.encrypted_session_secret).decode("utf-8")
+            except Exception as e:
+                logger.warning("Failed to decrypt session_secret for %s: %s", s.id, e)
+                sec_hex = None
+
+        if sec_hex:
+            sessions_data.append({
+                "session_id": str(s.id),
+                "session_secret_hex": sec_hex,
+                "expires_at": s.expiry.timestamp(),
+            })
 
     return JsonResponse({"status": "ok", "sessions": sessions_data})
+
 
 
