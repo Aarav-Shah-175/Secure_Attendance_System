@@ -102,6 +102,7 @@ class AttendanceAgent:
             )
             if resp.status_code == 200:
                 logger.info("Agent registered with Django successfully.")
+                self.sync_sessions_from_django()
                 return True
             else:
                 logger.error("Django registration failed (HTTP %s)", resp.status_code)

@@ -861,6 +861,7 @@ def agent_sync_view(request):
                 "expires_at": s.expiry.timestamp(),
             })
 
+    logger.info("Agent sync request from %s: returning %d active sessions", agent_id[:8] if agent_id else "unknown", len(sessions_data))
     return JsonResponse({"status": "ok", "sessions": sessions_data})
 
 
