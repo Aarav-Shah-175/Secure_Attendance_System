@@ -245,4 +245,6 @@ ATTENDANCE_AGENT_CHALLENGE_TTL_SECONDS = int(os.getenv("ATTENDANCE_AGENT_CHALLEN
 ATTENDANCE_AGENT_HEARTBEAT_MAX_AGE_SECONDS = int(os.getenv("ATTENDANCE_AGENT_HEARTBEAT_MAX_AGE_SECONDS", "90"))
 
 # Development bypass: if True, agent challenge is optional (useful for unit tests)
-ATTENDANCE_AGENT_DEV_BYPASS = os.getenv("ATTENDANCE_AGENT_DEV_BYPASS", "True") == "True"
+# Defaults to False in production to strictly enforce physical classroom presence.
+ATTENDANCE_AGENT_DEV_BYPASS = os.getenv("ATTENDANCE_AGENT_DEV_BYPASS", "False").lower() in ("true", "1", "yes")
+
