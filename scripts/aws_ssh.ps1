@@ -1,0 +1,1 @@
+ssh -i "C:\Users\shaha\OneDrive\Desktop\AWS\attendance-ec2-key.pem" ubuntu@13.127.69.218
