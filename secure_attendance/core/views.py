@@ -808,3 +808,41 @@ def agent_stop_session_view(request):
     updated = AttendanceSession.objects.filter(id=session_id, active=True).update(active=False)
     logger.info("Agent stop-session: session_id=%s updated=%d", session_id, updated)
     return JsonResponse({"status": "ok", "session_id": session_id, "closed": bool(updated)})
+
+
+def agent_sync_view(request):
+    """
+    POST /agent/sync/
+    Agent requests any active sessions it should know about.
+    Body: { "agent_id": "<agent_id>" }
+    """
+    from django.db.models import Q
+
+    if request.method != "POST":
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+    if not _require_agent_token(request):
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    try:
+        body = json.loads(request.body.decode("utf-8")) if request.body else {}
+        agent_id = body.get("agent_id", "")
+    except Exception:
+        agent_id = ""
+
+    now = timezone.now()
+    active_sessions = AttendanceSession.objects.filter(
+        active=True,
+        expiry__gt=now
+    )
+    if agent_id:
+        active_sessions = active_sessions.filter(Q(agent_id=agent_id) | Q(agent_id="") | Q(agent_id__isnull=True))
+
+    sessions_data = []
+    for s in active_sessions:
+        sessions_data.append({
+            "session_id": str(s.id),
+            "expires_at": s.expiry.timestamp(),
+        })
+
+    return JsonResponse({"status": "ok", "sessions": sessions_data})
+
