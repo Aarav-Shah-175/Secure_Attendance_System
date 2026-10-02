@@ -193,19 +193,36 @@ AUTH_USER_MODEL = 'core.User'
 SECURE_PRESENCE_V2_ENABLED = os.getenv("SECURE_PRESENCE_V2_ENABLED", "True") == "True"
 PRESENCE_HEARTBEAT_MAX_AGE_SECONDS = int(os.getenv("PRESENCE_HEARTBEAT_MAX_AGE_SECONDS", "45"))
 
+# ---------- DYNAMIC SERVER HOST & WEBAUTHN SETTINGS ----------
+# Single source of truth: SERVER_IP (e.g. 54.210.12.34 or 127.0.0.1)
+SERVER_IP = os.getenv("SERVER_IP", "").strip()
+SERVER_PORT = os.getenv("SERVER_PORT", "8000").strip()
+
+if SERVER_IP:
+    # Convert IPv4 to hyphenated sslip.io domain for WebAuthn specification compliance
+    if "." in SERVER_IP:
+        _derived_domain = f"{SERVER_IP.replace('.', '-')}.sslip.io"
+    else:
+        _derived_domain = SERVER_IP
+    _default_rp_id = _derived_domain
+    _port_suffix = f":{SERVER_PORT}" if SERVER_PORT and SERVER_PORT not in ("80", "443") else ""
+    _default_origin = f"https://{_derived_domain}{_port_suffix}"
+else:
+    _default_rp_id = "192-168-137-1.sslip.io"
+    _default_origin = "https://192-168-137-1.sslip.io:8000"
+
 # rpId must be a valid domain name — IP addresses are rejected by WebAuthn spec.
-# sslip.io is a free public DNS service: 192-168-137-1.sslip.io resolves to 192.168.137.1.
-# Students' phones resolve this via DNS through the hotspot's shared internet connection.
-WEBAUTHN_RP_ID = os.getenv("WEBAUTHN_RP_ID", "192-168-137-1.sslip.io")
+# sslip.io is a free public DNS service: <ip-with-hyphens>.sslip.io resolves to <ip>.
+WEBAUTHN_RP_ID = os.getenv("WEBAUTHN_RP_ID", _default_rp_id)
 WEBAUTHN_RP_NAME = os.getenv("WEBAUTHN_RP_NAME", "Secure Attendance System")
-WEBAUTHN_ORIGIN = os.getenv("WEBAUTHN_ORIGIN", "https://192-168-137-1.sslip.io:8000")
+WEBAUTHN_ORIGIN = os.getenv("WEBAUTHN_ORIGIN", _default_origin)
 
 # Automatically trust origins derived from WEBAUTHN_RP_ID and WEBAUTHN_ORIGIN
 if WEBAUTHN_ORIGIN and WEBAUTHN_ORIGIN not in CSRF_TRUSTED_ORIGINS:
     CSRF_TRUSTED_ORIGINS.append(WEBAUTHN_ORIGIN)
 if WEBAUTHN_RP_ID:
     for scheme in ("http://", "https://"):
-        for port_suffix in (":8000", ""):
+        for port_suffix in (f":{SERVER_PORT}" if SERVER_PORT else ":8000", ":8000", ""):
             entry = f"{scheme}{WEBAUTHN_RP_ID}{port_suffix}"
             if entry not in CSRF_TRUSTED_ORIGINS:
                 CSRF_TRUSTED_ORIGINS.append(entry)

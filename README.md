@@ -262,7 +262,7 @@ sequenceDiagram
 
     Note over Student,Cloud: 2. Student In-Class Attendance Flow
     Student->>Student: Connect Phone to Professor's Hotspot
-    Student->>Cloud: Open https://13-127-69-218.sslip.io (Portal)
+    Student->>Cloud: Open https://<EC2_IP_HYPHENS>.sslip.io (Portal)
     Student->>Cloud: POST /student/secure-v2/start-attempt/
     Cloud-->>Student: Attempt Created (ID + Challenge Token)
 

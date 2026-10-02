@@ -1,7 +1,7 @@
 # Caddyfile for automatic Let's Encrypt HTTPS SSL Termination
 # Enables native WebAuthn (Passkeys / Face ID / Touch ID) compliance
 
-{$WEBAUTHN_RP_ID:13-127-69-218.sslip.io} {
+{$WEBAUTHN_RP_ID:localhost} {
     reverse_proxy web:8000 {
         header_up Host {http.request.host}
         header_up X-Forwarded-Host {http.request.host}

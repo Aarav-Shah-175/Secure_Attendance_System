@@ -19,6 +19,14 @@ except ImportError:
         tomllib = None  # type: ignore
 
 
+try:
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv()
+    # Also load from parent directory if running from repo root/subfolder
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
+
 # Default config file locations (searched in order)
 _CONFIG_SEARCH = [
     Path(__file__).parent / "attendance_agent.toml",
@@ -83,11 +91,23 @@ def load_config(config_path: Optional[str] = None) -> AgentConfig:
     agent_sec = raw.get("agent", {})
     django_sec = raw.get("django", {})
 
+    # Compute Django URL with single source of truth (SERVER_IP) support
+    django_url = os.getenv("DJANGO_URL")
+    if not django_url:
+        server_ip = os.getenv("SERVER_IP", os.getenv("EC2_PUBLIC_IP", "")).strip()
+        server_port = os.getenv("SERVER_PORT", "8000").strip()
+        if server_ip:
+            domain = f"{server_ip.replace('.', '-')}.sslip.io" if "." in server_ip else server_ip
+            port_part = f":{server_port}" if server_port and server_port not in ("80", "443") else ""
+            django_url = f"https://{domain}{port_part}"
+        else:
+            django_url = django_sec.get("url", "https://192-168-137-1.sslip.io:8000")
+
     cfg = AgentConfig(
         port=int(os.getenv("AGENT_PORT", agent_sec.get("port", 5000))),
         host=os.getenv("AGENT_HOST", agent_sec.get("host", "0.0.0.0")),
         hotspot_ip=os.getenv("AGENT_HOTSPOT_IP", agent_sec.get("hotspot_ip", "192.168.137.1")),
-        django_url=os.getenv("DJANGO_URL", django_sec.get("url", "https://13-127-69-218.sslip.io")),
+        django_url=django_url,
         api_token=os.getenv("ATTENDANCE_AGENT_API_TOKEN", django_sec.get("api_token", "secure_presence_v3_default_token")),
         verify_ssl=os.getenv("DJANGO_VERIFY_SSL", str(django_sec.get("verify_ssl", False))).lower() == "true",
         key_dir=Path(os.getenv("AGENT_KEY_DIR", agent_sec.get("key_dir", str(Path.home() / ".secure_attendance")))),

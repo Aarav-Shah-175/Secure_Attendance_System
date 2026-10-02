@@ -20,9 +20,9 @@ mdns_enabled = false
 mdns_name = "attendance"
 
 [django]
-# URL of the Django server (HTTPS in production, HTTP for local dev)
-url = "http://13-127-69-218.sslip.io:8000"
+# URL of the Django server (Automatically overridden if SERVER_IP or DJANGO_URL is set in .env)
+url = "https://127.0.0.1:8000"
 # Pre-shared bearer token — must match ATTENDANCE_AGENT_API_TOKEN in Django .env
 api_token = "secure_presence_v3_default_token"
-# Set to true when Django has a real TLS certificate (e.g. Let's Encrypt)
+# Set to true when Django has a valid CA TLS certificate (e.g. Let's Encrypt via Caddy)
 verify_ssl = false

@@ -172,15 +172,12 @@ This section details how to deploy the backend, PostgreSQL database, and deep le
 
 ---
 
-### Step 2: Allocate & Associate an Elastic IP (Critical!)
-By default, AWS changes the public IP address every time you stop and start an EC2 instance. This breaks WebAuthn domains (`sslip.io`). Allocating an **Elastic IP** makes your IP permanent.
+### Step 2: Note Down Your EC2 Public IPv4
+Every time you launch/start your EC2 instance, AWS automatically assigns a public IPv4 address (e.g., `54.210.12.34`). 
+You do **NOT** need an Elastic IP.
 
-1. In the EC2 Console left sidebar, go to **Network & Security** $\rightarrow$ **Elastic IPs**.
-2. Click **Allocate Elastic IP address** $\rightarrow$ Click **Allocate**.
-3. Select the newly created Elastic IP $\rightarrow$ Click **Actions** $\rightarrow$ **Associate Elastic IP address**.
-4. **Instance**: Select your running `Secure-Attendance-Server` instance.
-5. Click **Associate**.
-6. Note down your Elastic IP (e.g., `13.127.69.218`).
+1. In the AWS EC2 Console, select your running `Secure-Attendance-Server` instance.
+2. Note down the **Public IPv4 address** shown on the summary tab (e.g., `54.210.12.34`).
 
 ---
 
@@ -188,9 +185,11 @@ By default, AWS changes the public IP address every time you stop and start an E
 On your professor laptop, open PowerShell or Terminal:
 
 ```powershell
-# Set key permissions (on Linux/macOS run: chmod 400 attendance-key.pem)
-# On Windows PowerShell:
-ssh -i "C:\Users\shaha\.ssh\attendance-key.pem" ubuntu@13.127.69.218
+# Using the helper script:
+.\scripts\aws_ssh.ps1 54.210.12.34
+
+# Or direct OpenSSH command:
+ssh -i "C:\Users\shaha\.ssh\attendance-key.pem" ubuntu@54.210.12.34
 ```
 
 ---
@@ -220,7 +219,7 @@ exit
 
 SSH back into the instance:
 ```powershell
-ssh -i "C:\Users\shaha\.ssh\attendance-key.pem" ubuntu@13.127.69.218
+.\scripts\aws_ssh.ps1 54.210.12.34
 ```
 Verify docker works: `docker ps`
 
@@ -234,11 +233,8 @@ Inside the EC2 terminal:
 git clone https://github.com/Aarav-Shah-175/Secure_Attendance_System.git
 cd Secure_Attendance_System
 
-# 2. Checkout feature branch
-git checkout feature/secure-presence-phase2
-
-# 3. Create production .env file
-# (Replace 13-127-69-218 with your actual Elastic IP with hyphens)
+# 2. Create production .env file
+# (Replace 54.210.12.34 with your current EC2 Public IPv4)
 cat << 'EOF' > .env
 DEBUG=False
 SECRET_KEY=django-prod-k9x2m48vnq39f82nmv824hf9823hf9823hfg9823hfg
@@ -248,10 +244,9 @@ DB_PASSWORD=your_ultra_secure_password_123
 DB_HOST=db
 DB_PORT=5432
 
-# WebAuthn Domain Configuration (Matches Elastic IP)
-WEBAUTHN_RP_ID=13-127-69-218.sslip.io
-WEBAUTHN_RP_NAME=Secure Attendance System
-WEBAUTHN_ORIGIN=https://13-127-69-218.sslip.io:8000
+# Single Source of Truth for EC2 Host (Auto-derives sslip.io WebAuthn domain)
+SERVER_IP=54.210.12.34
+SERVER_PORT=8000
 
 # Face & Liveness Engine Configuration
 LIVENESS_VERIFIER_TYPE=new_face_system
@@ -269,7 +264,7 @@ EOF
 
 ## 4. Cloud Lifecycle: Turning ON & Turning OFF Cloud
 
-To avoid unnecessary AWS compute charges when classes are not in session, follow this lifecycle guide.
+To avoid all AWS compute and Elastic IP charges when classes are not in session, follow this simple lifecycle guide.
 
 ### Turning OFF the Cloud (Saving AWS Costs)
 
@@ -283,38 +278,36 @@ To avoid unnecessary AWS compute charges when classes are not in session, follow
    - **Option A (AWS Console)**: Go to **EC2 Instances** $\rightarrow$ Select `Secure-Attendance-Server` $\rightarrow$ **Instance state** $\rightarrow$ **Stop instance**.
    - **Option B (AWS CLI on your laptop)**:
      ```bash
-     aws ec2 stop-instances --instance-ids i-0123456789abcdef0
+     aws ec2 stop-instances --instance-ids <YOUR_INSTANCE_ID>
      ```
 
 > [!TIP]
-> While an EC2 instance is **Stopped**, you pay **$0 for compute (CPU/RAM)**. You only pay pennies for the 30 GB EBS SSD storage.
-> Because you attached an Elastic IP, your IP and `sslip.io` domain remain permanently assigned to you.
+> While an EC2 instance is **Stopped**, you pay **$0 for compute (CPU/RAM)** and **$0 for public IPv4/Elastic IP**. You only pay a few pennies per month for the persistent EBS disk storage.
 
 ---
 
-### Turning ON the Cloud
+### Turning ON the Cloud (When You Need the Server)
 
 1. **Step 1: Start EC2 Instance**:
-   - **Option A (AWS Console)**: Go to **EC2 Instances** $\rightarrow$ Select `Secure-Attendance-Server` $\rightarrow$ **Instance state** $\rightarrow$ **Start instance**.
-   - **Option B (AWS CLI on your laptop)**:
-     ```bash
-     aws ec2 start-instances --instance-ids i-0123456789abcdef0
-     ```
-2. **Step 2: Wait 30 seconds**, then SSH into the server:
+   - In AWS Console $\rightarrow$ **EC2 Instances** $\rightarrow$ Select instance $\rightarrow$ **Instance state** $\rightarrow$ **Start instance**.
+2. **Step 2: Copy the New Public IPv4 Address** (e.g. `54.210.12.34`).
+3. **Step 3: SSH into the server**:
    ```powershell
-   ssh -i "C:\Users\shaha\.ssh\attendance-key.pem" ubuntu@13.127.69.218
+   .\scripts\aws_ssh.ps1 54.210.12.34
    ```
-3. **Step 3: Start Docker Containers**:
+4. **Step 4: Update `SERVER_IP` in `.env` and start Docker**:
    ```bash
    cd ~/Secure_Attendance_System
+   # Update SERVER_IP in .env to the new IP:
+   sed -i 's/^SERVER_IP=.*/SERVER_IP=54.210.12.34/' .env
    docker compose up -d
+   exit
    ```
-4. **Step 4: Verify Containers are Healthy**:
-   ```bash
-   docker compose ps
-   docker compose logs -f web --tail=50
+5. **Step 5: On your Laptop, run the Attendance Agent**:
+   ```powershell
+   .\scripts\start_agent.ps1 54.210.12.34
    ```
-   *The cloud backend is now online and ready for attendance sessions.*
+   *The script will automatically register with Django and output the exact student portal URL!*
 
 ---
 
@@ -425,7 +418,7 @@ Look for `Local Area Connection* X` or `Wireless LAN adapter Wi-Fi`:
 ---
 
 ### Step 3: Configure `attendance_agent.toml` for Cloud
-Open `attendance_agent/attendance_agent.toml` and set the Django Cloud URL:
+Open `attendance_agent/attendance_agent.toml` (or simply pass `SERVER_IP` to the launcher):
 
 ```toml
 [agent]
@@ -439,8 +432,8 @@ mdns_enabled = false
 mdns_name = "attendance"
 
 [django]
-# Point to your EC2 Cloud URL:
-url = "https://13-127-69-218.sslip.io:8000"
+# Default local URL (Automatically overridden by SERVER_IP / DJANGO_URL in .env)
+url = "https://127.0.0.1:8000"
 api_token = "secure_presence_v3_default_token"
 verify_ssl = false
 ```
@@ -450,14 +443,24 @@ verify_ssl = false
 ### Step 4: Start the Attendance Agent
 In PowerShell on the professor's laptop:
 ```powershell
-cd "D:\Project- Academic\Attendance"
-.\venv\Scripts\python.exe -m attendance_agent --verbose
+# Pass your current EC2 IP:
+.\scripts\start_agent.ps1 54.210.12.34
 ```
 
 **Expected Clean Console Output**:
 ```text
+==================================================
+  Secure Attendance System -- Agent Daemon
+==================================================
+
+  Target Django Cloud Server:
+  https://54-210-12-34.sslip.io:8000
+
+  Teacher & Students open this URL in browser:
+  https://54-210-12-34.sslip.io:8000
+
 2026-09-14 11:30:00 [INFO] attendance_agent — Loaded config: Agent will listen on 0.0.0.0:5000
-2026-09-14 11:30:00 [INFO] attendance_agent — Django URL: https://13-127-69-218.sslip.io:8000
+2026-09-14 11:30:00 [INFO] attendance_agent — Django URL: https://54-210-12-34.sslip.io:8000
 2026-09-14 11:30:00 [INFO] attendance_agent — Hotspot IP: 192.168.137.1
 2026-09-14 11:30:00 [INFO] attendance_agent.agent — Agent identity loaded. Agent ID prefix: e9f9aaf1760d5f92
 2026-09-14 11:30:01 [INFO] attendance_agent.agent — Agent registered with Django successfully.
@@ -482,14 +485,14 @@ Students use their regular smartphone browser (Google Chrome on Android, Safari 
 ### Step 2: Open Student Portal URL
 Open Safari (iOS) or Chrome (Android) and navigate to:
 ```text
-https://13-127-69-218.sslip.io:8000
+https://<EC2_IP_WITH_HYPHENS>.sslip.io:8000
 ```
-*(Replace with your actual EC2 IP with hyphens)*
+*(e.g., `https://54-210-12-34.sslip.io:8000`)*
 
 ### Step 3: Handle Initial SSL Certificate Warning
 Because `sslip.io` uses a self-signed or development certificate on port 8000:
 * **iOS (Safari)**: Tap **Show Details** $\rightarrow$ Tap **visit this website** at the bottom $\rightarrow$ Tap **Visit Website** on popup.
-* **Android (Chrome)**: Tap **Advanced** $\rightarrow$ Tap **Proceed to 13-127-69-218.sslip.io (unsafe)**.
+* **Android (Chrome)**: Tap **Advanced** $\rightarrow$ Tap **Proceed to <domain> (unsafe)**.
 
 ### Step 4: Camera Permissions
 When the browser requests camera access, tap **Allow**.
@@ -543,7 +546,7 @@ sequenceDiagram
 
     Note over Student,Cloud: In-Class Attendance Window
     Student->>Student: Connect Phone to Laptop Hotspot
-    Student->>Cloud: Open https://13-127-69-218.sslip.io:8000
+    Student->>Cloud: Open https://<EC2_IP_HYPHENS>.sslip.io:8000
     Student->>Student: Click "Mark Attendance"
 
     rect rgb(235, 245, 255)
@@ -630,7 +633,7 @@ To update or deploy fine-tuned MiniFASNet models:
 | `generate_challenge: no active session for ... (404)` | Agent RAM does not have the active session secret | Start session from Professor Dashboard *after* Agent is registered and connected. |
 | `Could not obtain Attendance Agent challenge` | Student phone cannot reach `http://192.168.137.1:5000` | 1. Ensure student is connected to laptop's Wi-Fi hotspot (not mobile data).<br>2. Check Windows Firewall: allow incoming TCP port 5000. |
 | `ERR_NAME_NOT_RESOLVED` for `*.sslip.io` | Laptop hotspot is not sharing an active internet connection | 1. Ensure professor laptop has working Wi-Fi/Ethernet internet.<br>2. In Windows Hotspot settings, ensure "Share my internet connection" is enabled. |
-| `Invalid domain / Security Error` during Passkey | Student navigated using raw IP (e.g. `192.168.137.1`) instead of domain | WebAuthn requires domain names. Must use `https://13-127-69-218.sslip.io:8000` (or `https://192-168-137-1.sslip.io:8000`). |
+| `Invalid domain / Security Error` during Passkey | Student navigated using raw IP (e.g. `54.210.12.34`) instead of domain | WebAuthn requires domain names. Must use `https://<ip-with-hyphens>.sslip.io:8000` (e.g. `https://54-210-12-34.sslip.io:8000`). |
 | `Anti-spoofing alert: genuine live face required` | MiniFASNet flagged print attack, screen replay, extreme tilt ($>30^\circ$), or face too close ($>38\%$) | 1. Hold phone steady at arm's length at eye level.<br>2. Avoid backlighting or pointing camera at another screen. |
 | `Face does not match registered profile` | Cosine similarity $< 0.65$ between current live face and stored 512-d embedding | 1. Remove sunglasses/masks.<br>2. If appearance changed, professor/admin can reset student face profile in Django Admin. |
 | `401 Unauthorized` on `/agent/register/` | Bearer token mismatch between Agent and Django | Ensure `api_token` in `attendance_agent.toml` matches `ATTENDANCE_AGENT_API_TOKEN` in Django `.env`. |
