@@ -196,7 +196,9 @@ PRESENCE_HEARTBEAT_MAX_AGE_SECONDS = int(os.getenv("PRESENCE_HEARTBEAT_MAX_AGE_S
 # ---------- DYNAMIC SERVER HOST & WEBAUTHN SETTINGS ----------
 # Single source of truth: SERVER_IP (e.g. 54.210.12.34 or 127.0.0.1)
 SERVER_IP = os.getenv("SERVER_IP", "").strip()
-SERVER_PORT = os.getenv("SERVER_PORT", "8000").strip()
+_is_local = not SERVER_IP or SERVER_IP in ("127.0.0.1", "localhost", "192.168.137.1")
+_default_port = "8000" if _is_local else "443"
+SERVER_PORT = os.getenv("SERVER_PORT", _default_port).strip()
 
 if SERVER_IP:
     # Convert IPv4 to hyphenated sslip.io domain for WebAuthn specification compliance

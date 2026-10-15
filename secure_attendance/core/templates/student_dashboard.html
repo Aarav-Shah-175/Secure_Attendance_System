@@ -212,6 +212,16 @@
         <h2>Student Dashboard</h2>
         <p class="subheading">View active classes and submit attendance securely</p>
 
+        <!-- Insecure Connection Warning Banner -->
+        <div id="insecureContextBanner" style="display:none; background:#fef2f2; border:1px solid #f87171; color:#991b1b; padding:1rem; border-radius:10px; margin-bottom:1.2rem; font-size:0.92rem; line-height:1.5;">
+            <strong>⚠️ Insecure Connection Warning:</strong><br>
+            You are connected via unencrypted HTTP (<code>http://</code>).
+            Modern smartphone and desktop browsers strictly disable camera access and biometric Passkeys (Face ID / Touch ID) on insecure connections.<br><br>
+            <a id="httpsSwitchLink" href="#" style="display:inline-block; background:#dc2626; color:white; padding:0.45rem 0.9rem; border-radius:6px; font-weight:700; text-decoration:none; font-size:0.88rem;">
+                Switch to Secure HTTPS (https://)
+            </a>
+        </div>
+
         <div class="registration-status-box" style="margin-bottom: 1.2rem;">
             {% if is_fully_registered %}
             <div
@@ -257,6 +267,19 @@
     </div>
 
     <script>
+        // Check for Secure Context on page load
+        if (!window.isSecureContext) {
+            const banner = document.getElementById("insecureContextBanner");
+            const switchLink = document.getElementById("httpsSwitchLink");
+            if (banner && switchLink) {
+                banner.style.display = "block";
+                // Suggest https://<hostname> (omitting port 8000/80 to use default HTTPS port 443)
+                const host = window.location.hostname;
+                switchLink.href = "https://" + host + window.location.pathname;
+                switchLink.innerText = "Switch to Secure HTTPS: https://" + host;
+            }
+        }
+
         // ---------- WEBAUTHN UTILITIES ----------
         function bufferToBase64Url(buffer) {
             const bytes = new Uint8Array(buffer);
@@ -280,6 +303,11 @@
 
         // ---------- PASSKEY ENROLMENT ----------
         async function registerPasskey() {
+            if (!window.isSecureContext || !navigator.credentials || !navigator.credentials.create) {
+                alert("Security Requirement: Biometric Passkeys (Face ID / Touch ID) require a secure HTTPS connection.\n\nYour browser completely blocks passkey creation over unencrypted HTTP.\n\nPlease open this portal using HTTPS:\nhttps://" + window.location.hostname);
+                return;
+            }
+
             try {
                 const optRes = await fetch("/student/passkey/register/options/", {
                     method: "POST",
@@ -336,6 +364,12 @@
         // ---------- FACE ID REGISTRATION ----------
         async function startFaceRegistration() {
             const statusEl = document.getElementById("attendanceStatus");
+            if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert("Security Requirement: Camera access requires a secure HTTPS connection.\n\nYour browser blocks camera access over unencrypted HTTP.\n\nPlease open this portal using HTTPS:\nhttps://" + window.location.hostname);
+                if (statusEl) statusEl.innerText = "Camera blocked: Connection is not secure HTTPS.";
+                return;
+            }
+
             statusEl.innerText = "Opening camera for Face ID registration...";
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -536,6 +570,9 @@
 
                 // Step 3: Open Camera & Sample Multi-Frame Burst for MiniFASNet + FaceNet
                 chalStatusEl.innerText = "Opening camera...";
+                if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error("Camera access requires a secure HTTPS connection. Please open this portal via HTTPS (https://" + window.location.hostname + ")");
+                }
                 try {
                     stream = await navigator.mediaDevices.getUserMedia({
                         video: { width: 480, height: 360, facingMode: "user" }
@@ -594,6 +631,10 @@
                 chalStatusEl.innerText = "Prompting device passkey...";
                 chalStatusEl.style.color = "#38bdf8";
                 timerEl.innerText = "Hardware Assertion";
+
+                if (!navigator.credentials || !navigator.credentials.get) {
+                    throw new Error("Hardware Passkeys require a secure HTTPS connection. Please open this portal via HTTPS (https://" + window.location.hostname + ")");
+                }
 
                 const chalRes = await fetch("/student/secure-v2/request-challenge/", {
                     method: "POST",

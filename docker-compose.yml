@@ -16,7 +16,7 @@ services:
       - LIVENESS_VERIFIER_TYPE=new_face_system
       - SECRET_KEY=${SECRET_KEY:-django-insecure-production-key-must-be-changed-in-env}
       - SERVER_IP=${SERVER_IP:-}
-      - SERVER_PORT=${SERVER_PORT:-8000}
+      - SERVER_PORT=${SERVER_PORT:-443}
       - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-}
       - WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME:-Secure Attendance System}
       - WEBAUTHN_ORIGIN=${WEBAUTHN_ORIGIN:-}
@@ -53,7 +53,25 @@ services:
       timeout: 5s
       retries: 5
 
+  caddy:
+    image: caddy:2-alpine
+    container_name: secure_attendance_caddy
+    restart: always
+    environment:
+      - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
 volumes:
   postgres_data:
   static_volume:
   media_volume:
+  caddy_data:
+  caddy_config:

@@ -165,8 +165,13 @@ This section details how to deploy the backend, PostgreSQL database, and deep le
      |---|---|---|---|---|
      | **SSH** | TCP | `22` | `My IP` (or `0.0.0.0/0`) | Secure Shell Access |
      | **HTTP** | TCP | `80` | `0.0.0.0/0` | Let's Encrypt / HTTP |
-     | **HTTPS** | TCP | `443` | `0.0.0.0/0` | Production SSL / Caddy |
-     | **Custom TCP** | TCP | `8000` | `0.0.0.0/0` | Direct Django Gunicorn HTTPS |
+     | **HTTPS** | TCP | `443` | `0.0.0.0/0` | Production SSL / Caddy HTTPS |
+     | **Custom TCP** | TCP | `8000` | `0.0.0.0/0` | Direct Django Gunicorn Backend |
+
+   > [!IMPORTANT]
+   > **Ports 80 & 443 are Mandatory for Biometrics & Camera**:
+   > iOS Safari and Android Chrome strictly disable device cameras and WebAuthn Passkeys on unencrypted HTTP (`http://`).
+   > Port 80 is required by Let's Encrypt for automatic certificate verification, and Port 443 serves the trusted HTTPS site.
 7. **Configure Storage**: Set Root volume to **30 GiB gp3 SSD** (accommodates Docker images, Ubuntu packages, PyTorch models).
 8. Click **Launch Instance**.
 
@@ -244,9 +249,10 @@ DB_PASSWORD=your_ultra_secure_password_123
 DB_HOST=db
 DB_PORT=5432
 
-# Single Source of Truth for EC2 Host (Auto-derives sslip.io WebAuthn domain)
+# Server Host & SSL Domain (Auto-configures Caddy Let's Encrypt HTTPS)
 SERVER_IP=54.210.12.34
-SERVER_PORT=8000
+SERVER_PORT=443
+WEBAUTHN_RP_ID=54-210-12-34.sslip.io
 
 # Face & Liveness Engine Configuration
 LIVENESS_VERIFIER_TYPE=new_face_system
@@ -298,8 +304,11 @@ To avoid all AWS compute and Elastic IP charges when classes are not in session,
 4. **Step 4: Update `SERVER_IP` in `.env` and start Docker**:
    ```bash
    cd ~/Secure_Attendance_System
-   # Update SERVER_IP in .env to the new IP:
-   sed -i 's/^SERVER_IP=.*/SERVER_IP=54.210.12.34/' .env
+   # Update SERVER_IP and WEBAUTHN_RP_ID in .env to the new IP:
+   NEW_IP="54.210.12.34"
+   NEW_DOMAIN="${NEW_IP//./-}.sslip.io"
+   sed -i "s/^SERVER_IP=.*/SERVER_IP=${NEW_IP}/" .env
+   sed -i "s/^WEBAUTHN_RP_ID=.*/WEBAUTHN_RP_ID=${NEW_DOMAIN}/" .env
    docker compose up -d
    exit
    ```
@@ -485,9 +494,12 @@ Students use their regular smartphone browser (Google Chrome on Android, Safari 
 ### Step 2: Open Student Portal URL
 Open Safari (iOS) or Chrome (Android) and navigate to:
 ```text
-https://<EC2_IP_WITH_HYPHENS>.sslip.io:8000
+https://<EC2_IP_WITH_HYPHENS>.sslip.io
 ```
-*(e.g., `https://54-210-12-34.sslip.io:8000`)*
+*(e.g., `https://54-210-12-34.sslip.io`)*
+
+> [!NOTE]
+> When using standard HTTPS (Port 443) with Caddy, Let's Encrypt provides a fully trusted SSL certificate. There are **no certificate warnings**, and Camera + Hardware Passkeys (Face ID / Touch ID) work natively!
 
 ### Step 3: Handle Initial SSL Certificate Warning
 Because `sslip.io` uses a self-signed or development certificate on port 8000:
@@ -629,6 +641,7 @@ To update or deploy fine-tuned MiniFASNet models:
 
 | Error Message / Symptom | Root Cause | Exact Terminal / UI Fix |
 |---|---|---|
+| `passkey error: TypeError: Cannot read properties of undefined (reading 'create')` or `(reading 'getUserMedia')` | The portal was accessed over plain HTTP (`http://`). Browser security (W3C Secure Context) completely disables Camera (`navigator.mediaDevices`) and Passkeys (`navigator.credentials`) on insecure connections. | 1. Ensure Port 80 and 443 are open in AWS EC2 Security Group.<br>2. Ensure Caddy is running in Docker: `docker compose up -d`.<br>3. Open the portal via HTTPS: `https://<IP-WITH-HYPHENS>.sslip.io` (e.g. `https://3-110-79-14.sslip.io`). |
 | `Network presence verification failed: agent_not_registered` | Attendance session was started on Django *before* the local Agent was launched | 1. Ensure `python -m attendance_agent` is running on professor laptop.<br>2. On Professor Dashboard, click **Start Attendance** to push session keys to Agent.<br>3. Student submits attendance again. |
 | `generate_challenge: no active session for ... (404)` | Agent RAM does not have the active session secret | Start session from Professor Dashboard *after* Agent is registered and connected. |
 | `Could not obtain Attendance Agent challenge` | Student phone cannot reach `http://192.168.137.1:5000` | 1. Ensure student is connected to laptop's Wi-Fi hotspot (not mobile data).<br>2. Check Windows Firewall: allow incoming TCP port 5000. |

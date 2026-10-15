@@ -25,8 +25,15 @@ if (-not $IP) {
 
 $domain = if ($IP -match "^\d+\.\d+\.\d+\.\d+$") { "$($IP.Replace('.', '-')).sslip.io" } else { $IP }
 $protocol = if ($env:DJANGO_PROTOCOL) { $env:DJANGO_PROTOCOL } else { "http" }
-$portalUrl = "${protocol}://${domain}:8000"
-$env:DJANGO_URL = $portalUrl
+$agentDjangoUrl = "${protocol}://${domain}:8000"
+$env:DJANGO_URL = $agentDjangoUrl
+
+# HTTPS URL for browser users (Caddy port 443 with valid Let's Encrypt SSL certificate)
+$browserUrl = if ($IP -in @("127.0.0.1", "localhost", "192.168.137.1")) {
+    "https://192-168-137-1.sslip.io:8000"
+} else {
+    "https://${domain}"
+}
 
 Write-Host "Activating virtual environment..." -ForegroundColor Yellow
 $venvActivate = Join-Path $PSScriptRoot "..\venv\Scripts\Activate.ps1"
@@ -37,11 +44,11 @@ if (Test-Path $venvActivate) {
 Set-Location (Join-Path $PSScriptRoot "..")
 Write-Host "Virtual environment active." -ForegroundColor Yellow
 Write-Host ""
-Write-Host "  Target Django Cloud Server:" -ForegroundColor Gray
-Write-Host "  $portalUrl" -ForegroundColor Cyan
+Write-Host "  Target Django Server (Agent Channel):" -ForegroundColor Gray
+Write-Host "  $agentDjangoUrl" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  Teacher & Students open this URL in browser:" -ForegroundColor White
-Write-Host "  $portalUrl" -ForegroundColor Green
+Write-Host "  Teacher & Students open this URL in browser (Secure HTTPS for Passkeys & Camera):" -ForegroundColor White
+Write-Host "  $browserUrl" -ForegroundColor Green
 Write-Host ""
 
 $pythonExe = Join-Path $PSScriptRoot "..\venv\Scripts\python.exe"
