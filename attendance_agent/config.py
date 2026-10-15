@@ -98,10 +98,11 @@ def load_config(config_path: Optional[str] = None) -> AgentConfig:
         server_port = os.getenv("SERVER_PORT", "8000").strip()
         if server_ip:
             domain = f"{server_ip.replace('.', '-')}.sslip.io" if "." in server_ip else server_ip
+            proto = os.getenv("DJANGO_PROTOCOL", "http" if server_port == "8000" else "https")
             port_part = f":{server_port}" if server_port and server_port not in ("80", "443") else ""
-            django_url = f"https://{domain}{port_part}"
+            django_url = f"{proto}://{domain}{port_part}"
         else:
-            django_url = django_sec.get("url", "https://192-168-137-1.sslip.io:8000")
+            django_url = django_sec.get("url", "http://127.0.0.1:8000")
 
     cfg = AgentConfig(
         port=int(os.getenv("AGENT_PORT", agent_sec.get("port", 5000))),

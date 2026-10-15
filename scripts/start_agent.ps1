@@ -24,7 +24,9 @@ if (-not $IP) {
 }
 
 $domain = if ($IP -match "^\d+\.\d+\.\d+\.\d+$") { "$($IP.Replace('.', '-')).sslip.io" } else { $IP }
-$portalUrl = "https://${domain}:8000"
+$protocol = if ($env:DJANGO_PROTOCOL) { $env:DJANGO_PROTOCOL } else { "http" }
+$portalUrl = "${protocol}://${domain}:8000"
+$env:DJANGO_URL = $portalUrl
 
 Write-Host "Activating virtual environment..." -ForegroundColor Yellow
 $venvActivate = Join-Path $PSScriptRoot "..\venv\Scripts\Activate.ps1"
