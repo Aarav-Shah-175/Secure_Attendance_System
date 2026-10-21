@@ -195,7 +195,11 @@
                 Initializing camera...</p>
             <p id="challengeTimer" style="font-size:0.85rem; color:#94a3b8; margin:0.25rem 0 0;">Verifying...</p>
 
-            <button id="cancelOverlayBtn" onclick="closeOverlay()" style="background-color:#475569; color:#f1f5f9; padding:0.5rem; border:none; border-radius:8px; font-size:0.85rem; width:100%; margin-top:1rem; cursor:pointer;">
+            <button id="captureFaceBtn" style="display:none; background: linear-gradient(135deg, #0ea5e9, #0b5f78); color:#f1f5f9; padding:0.75rem; border:none; border-radius:10px; font-size:1rem; font-weight:700; width:100%; margin-top:0.8rem; cursor:pointer; box-shadow: 0 4px 15px rgba(14,165,233,0.4); transition: transform 0.15s ease, box-shadow 0.15s ease;" onmousedown="this.style.transform='scale(0.96)'" onmouseup="this.style.transform='scale(1)'">
+                📸 Capture Face
+            </button>
+
+            <button id="cancelOverlayBtn" onclick="closeOverlay()" style="background-color:#475569; color:#f1f5f9; padding:0.5rem; border:none; border-radius:8px; font-size:0.85rem; width:100%; margin-top:0.5rem; cursor:pointer;">
                 Cancel
             </button>
         </div>
@@ -487,6 +491,8 @@
             function closeOverlay() {
                 stopCamera();
                 overlay.style.display = "none";
+                const captureFaceBtn = document.getElementById("captureFaceBtn");
+                if (captureFaceBtn) captureFaceBtn.style.display = "none";
                 if (heartbeatInterval) {
                     clearInterval(heartbeatInterval);
                     heartbeatInterval = null;
@@ -583,14 +589,25 @@
                     throw new Error("Camera access denied: " + err.message);
                 }
 
-                // Let auto-exposure settle
+                // Wait for student to manually capture
                 promptEl.innerText = "Look straight into camera";
-                chalStatusEl.innerText = "Scanning facial features...";
-                timerEl.innerText = "Analyzing...";
-                await new Promise(r => setTimeout(r, 600));
+                chalStatusEl.innerText = "Position your face, then tap Capture";
+                timerEl.innerText = "Ready when you are";
+
+                const captureFaceBtn = document.getElementById("captureFaceBtn");
+                captureFaceBtn.style.display = "block";
+
+                // Wait for the student to press the Capture button
+                await new Promise(resolve => {
+                    captureFaceBtn.onclick = () => {
+                        captureFaceBtn.style.display = "none";
+                        resolve();
+                    };
+                });
 
                 promptEl.innerText = "Capturing anti-spoofing burst...";
                 chalStatusEl.innerText = "Sampling multi-frame sequence...";
+                timerEl.innerText = "Analyzing...";
                 const frames = await captureTemporalBurst(videoElement, 7, 120);
 
                 // Step 4: Perform Neural Network Verification on Server
@@ -726,6 +743,8 @@
                 statusEl.innerText = "Error: " + err.message;
                 statusEl.style.color = "red";
                 stopCamera();
+                const captureFaceBtn = document.getElementById("captureFaceBtn");
+                if (captureFaceBtn) captureFaceBtn.style.display = "none";
             }
         }
     </script>
